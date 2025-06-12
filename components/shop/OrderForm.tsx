@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -85,8 +85,8 @@ export default function OrderForm({
   });
 
   // Парсинг сохраненного адреса
-  useState(() => {
-    if (user.default_address) {
+  useEffect(() => {
+    if (user && user.default_address) {
       try {
         const parsed = JSON.parse(user.default_address);
         setParsedDefaultAddress(parsed);
@@ -99,7 +99,7 @@ export default function OrderForm({
         console.error('Ошибка парсинга адреса:', e);
       }
     }
-  }, [user.default_address]);
+  }, [user, user?.default_address, addressChoice]);
 
   // Временные слоты для доставки
   const deliveryTimeSlots = [
