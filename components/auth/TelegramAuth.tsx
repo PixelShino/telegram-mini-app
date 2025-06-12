@@ -34,35 +34,77 @@ export default function TelegramAuth({
   const [isBrowser, setIsBrowser] = useState(false);
   const telegramLoginRef = useRef<HTMLDivElement>(null);
 
+  // Проверяем, есть ли параметры авторизации в URL
   useEffect(() => {
-    // Для отладки: раскомментировать строку ниже, чтобы принудительно включить режим браузера
-    // setIsBrowser(true); setIsLoading(false); loadTelegramWidget(); return;
+    const checkUrlParams = () => {
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const authSuccess = urlParams.get('auth');
+        const authError = urlParams.get('error');
 
+        if (authSuccess === 'success') {
+          // Авторизация через виджет успешна, проверяем куки
+          checkAuthCookie();
+        } else if (authError) {
+          // Произошла ошибка при авторизации через виджет
+          setError(`Ошибка авторизации: ${authError}`);
+          setIsLoading(false);
+        }
+      }
+    };
+
+    checkUrlParams();
+  }, []);
+
+  // Проверяем куки авторизации
+  const checkAuthCookie = async () => {
     try {
-      // проверка запущено ли приложение в Telegram WebApp или в браузере
-      const isTelegramWebApp =
-        typeof window !== 'undefined' &&
-        window.Telegram &&
-        window.Telegram.WebApp;
+      const response = await fetch('/api/auth/check-auth', {
+        method: 'GET',
+        credentials: 'include',
+      });
 
-      console.log('Telegram WebApp доступен:', !!isTelegramWebApp);
-      setIsBrowser(!isTelegramWebApp);
-
-      if (isTelegramWebApp) {
-        checkTelegramAuth();
+      if (response.ok) {
+        const userData = await response.json();
+        onAuthSuccess(userData);
       } else {
-        // Если в браузере, то показывать виджет авторизации
         setIsLoading(false);
+      }
+    } catch (error) {
+      console.error('Ошибка проверки авторизации:', error);
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Сначала проверяем куки авторизации
+    checkAuthCookie().then(() => {
+      // Если куки нет, проверяем Telegram WebApp
+      try {
+        const isTelegramWebApp =
+          typeof window !== 'undefined' &&
+          window.Telegram &&
+          window.Telegram.WebApp;
+
+        console.log('Telegram WebApp доступен:', !!isTelegramWebApp);
+        setIsBrowser(!isTelegramWebApp);
+
+        if (isTelegramWebApp) {
+          checkTelegramAuth();
+        } else {
+          // Если в браузере, то показывать виджет авторизации
+          setIsLoading(false);
+          loadTelegramWidget();
+        }
+      } catch (err) {
+        console.error('Ошибка при проверке окружения:', err);
+        setError('Ошибка при проверке окружения');
+        setIsLoading(false);
+        // В случае ошибки показываем виджет авторизации
+        setIsBrowser(true);
         loadTelegramWidget();
       }
-    } catch (err) {
-      console.error('Ошибка при проверке окружения:', err);
-      setError('Ошибка при проверке окружения');
-      setIsLoading(false);
-      // В случае ошибки показываем виджет авторизации
-      setIsBrowser(true);
-      loadTelegramWidget();
-    }
+    });
   }, []);
 
   // Загрузка виджета авторизации Telegram
@@ -99,12 +141,6 @@ export default function TelegramAuth({
     }
   };
 
-  // В компоненте TelegramAuth.tsx
-
-  // Добавьте состояние для отслеживания, нужна ли регистрация
-  const [needsRegistration, setNeedsRegistration] = useState(false);
-  const [userData, setUserData] = useState<any>(null);
-
   const checkTelegramAuth = async () => {
     try {
       if (typeof window !== 'undefined') {
@@ -113,7 +149,7 @@ export default function TelegramAuth({
         if (tg && tg.initDataUnsafe?.user) {
           const user = tg.initDataUnsafe.user;
 
-          // Проверяем/получаем пользователя из БД без регистрации
+          // Проверяем/создаем пользователя в БД
           const response = await fetch('/api/auth/telegram', {
             method: 'POST',
             headers: {
@@ -123,22 +159,13 @@ export default function TelegramAuth({
               user: user,
               initData: tg.initData,
               shopId: shopId,
-              isRegistration: false, // Не регистрируем, только проверяем
+              isRegistration: true, // Автоматически регистрируем в WebApp
             }),
           });
 
           if (response.ok) {
             const userData = await response.json();
-
-            if (userData.needsRegistration) {
-              // Пользователь не зарегистрирован, показываем форму регистрации
-              setNeedsRegistration(true);
-              setUserData(userData);
-              setIsLoading(false);
-            } else {
-              // Пользователь уже зарегистрирован, продолжаем
-              onAuthSuccess(userData);
-            }
+            onAuthSuccess(userData);
           } else {
             setError('Ошибка авторизации');
             setIsLoading(false);
@@ -154,79 +181,6 @@ export default function TelegramAuth({
       setIsLoading(false);
     }
   };
-
-  // Функция для регистрации пользователя
-  const registerUser = async () => {
-    try {
-      setIsLoading(true);
-
-      const tg = (window as any).Telegram?.WebApp;
-
-      if (!tg || !tg.initDataUnsafe?.user) {
-        setError('Необходимо открыть через Telegram');
-        setIsLoading(false);
-        return;
-      }
-
-      const user = tg.initDataUnsafe.user;
-
-      // Отправляем запрос на регистрацию
-      const response = await fetch('/api/auth/telegram', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user: user,
-          initData: tg.initData,
-          shopId: shopId,
-          isRegistration: true, // Это запрос на регистрацию
-        }),
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
-        onAuthSuccess(userData);
-      } else {
-        setError('Ошибка регистрации');
-        setIsLoading(false);
-      }
-    } catch (err) {
-      console.error('Ошибка регистрации:', err);
-      setError('Ошибка подключения');
-      setIsLoading(false);
-    }
-  };
-
-  // Добавьте отображение формы регистрации
-  if (needsRegistration) {
-    return (
-      <div className='flex items-center justify-center min-h-screen bg-background'>
-        <Card className='w-full max-w-md mx-4'>
-          <CardHeader className='text-center'>
-            <CardTitle>Регистрация</CardTitle>
-            <CardDescription>
-              Для продолжения необходимо зарегистрироваться
-            </CardDescription>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <div className='mb-4 text-center'>
-              <p>Имя: {userData?.name}</p>
-              <p>Имя пользователя: {userData?.username || 'Не указано'}</p>
-            </div>
-
-            <Button
-              onClick={registerUser}
-              className='w-full'
-              disabled={isLoading}
-            >
-              {isLoading ? 'Регистрация...' : 'Зарегистрироваться'}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   if (isLoading) {
     return (
@@ -286,22 +240,22 @@ export default function TelegramAuth({
           </CardHeader>
           <CardContent className='space-y-4 text-center'>
             <p className='text-sm text-muted-foreground'>
-              Для доступа к магазину необходимо открыть приложение через
-              Telegram бота.
+              Для доступа к магазину необходимо авторизоваться через Telegram.
             </p>
-            <div className='space-y-2'>
-              <p className='text-xs text-muted-foreground'>Инструкция:</p>
-              <div className='p-3 space-y-1 text-xs text-left rounded bg-muted'>
-                <p>1. Найдите бота в Telegram</p>
-                <p>2. Нажмите /start</p>
-                <p>3. Нажмите "Открыть магазин"</p>
-              </div>
-            </div>
-            <Button onClick={checkTelegramAuth} className='w-full'>
+
+            <Button onClick={() => window.location.reload()} className='w-full'>
               Попробовать снова
             </Button>
 
             <div className='pt-4 mt-4 border-t'>
+              <p className='mb-2 text-sm text-muted-foreground'>
+                Или используйте виджет авторизации:
+              </p>
+              <div
+                ref={telegramLoginRef}
+                className='flex justify-center mb-4'
+              ></div>
+
               <Button
                 onClick={() => {
                   const botName = 'storeTest34523452345234534Bot';
