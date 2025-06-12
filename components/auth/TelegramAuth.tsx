@@ -11,6 +11,15 @@ import {
 } from '@/components/ui/card';
 import { Shield } from 'lucide-react';
 
+// Добавляем типы для Telegram
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: any;
+    };
+  }
+}
+
 interface TelegramAuthProps {
   onAuthSuccess: (user: any) => void;
   shopId: string;
@@ -26,16 +35,32 @@ export default function TelegramAuth({
   const telegramLoginRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Проверяем, запущено ли приложение в Telegram WebApp или в браузере
-    const isTelegramWebApp =
-      typeof window !== 'undefined' && window.Telegram?.WebApp;
-    setIsBrowser(!isTelegramWebApp);
+    // Для отладки: раскомментировать строку ниже, чтобы принудительно включить режим браузера
+    // setIsBrowser(true); setIsLoading(false); loadTelegramWidget(); return;
 
-    if (isTelegramWebApp) {
-      checkTelegramAuth();
-    } else {
-      // Если в браузере, то показываем виджет авторизации
+    try {
+      // проверка запущено ли приложение в Telegram WebApp или в браузере
+      const isTelegramWebApp =
+        typeof window !== 'undefined' &&
+        window.Telegram &&
+        window.Telegram.WebApp;
+
+      console.log('Telegram WebApp доступен:', !!isTelegramWebApp);
+      setIsBrowser(!isTelegramWebApp);
+
+      if (isTelegramWebApp) {
+        checkTelegramAuth();
+      } else {
+        // Если в браузере, то показывать виджет авторизации
+        setIsLoading(false);
+        loadTelegramWidget();
+      }
+    } catch (err) {
+      console.error('Ошибка при проверке окружения:', err);
+      setError('Ошибка при проверке окружения');
       setIsLoading(false);
+      // В случае ошибки показываем виджет авторизации
+      setIsBrowser(true);
       loadTelegramWidget();
     }
   }, []);
@@ -43,65 +68,34 @@ export default function TelegramAuth({
   // Загрузка виджета авторизации Telegram
   const loadTelegramWidget = () => {
     if (typeof window !== 'undefined' && telegramLoginRef.current) {
-      // Очищаем контейнер перед добавлением скрипта
-      telegramLoginRef.current.innerHTML = '';
+      try {
+        // Очищаем контейнер перед добавлением скрипта
+        telegramLoginRef.current.innerHTML = '';
 
-      // Создаем скрипт для виджета авторизации
-      const script = document.createElement('script');
-      script.src = 'https://telegram.org/js/telegram-widget.js?22';
-      script.setAttribute(
-        'data-telegram-login',
-        '@storeTest34523452345234534Bot',
-      ); // Замените на имя вашего бота
-      script.setAttribute('data-size', 'large');
-      script.setAttribute('data-radius', '8');
-      script.setAttribute('data-request-access', 'write');
-      script.setAttribute('data-userpic', 'true');
-      script.setAttribute(
-        'data-auth-url',
-        `${window.location.origin}/api/auth/telegram-login?shop_id=${shopId}`,
-      );
-      script.setAttribute('data-onauth', 'onTelegramAuth(user)');
-      script.async = true;
+        // Создаем скрипт для виджета авторизации
+        const script = document.createElement('script');
+        script.src = 'https://telegram.org/js/telegram-widget.js?22';
+        // Имя бота без символа @
+        script.setAttribute(
+          'data-telegram-login',
+          'storeTest34523452345234534Bot',
+        );
+        script.setAttribute('data-size', 'large');
+        script.setAttribute('data-radius', '8');
+        script.setAttribute('data-request-access', 'write');
+        script.setAttribute('data-userpic', 'true');
+        script.setAttribute(
+          'data-auth-url',
+          `${window.location.origin}/api/auth/telegram-login?shop_id=${shopId}`,
+        );
+        script.async = true;
 
-      // Добавляем обработчик авторизации в глобальную область видимости
-      window.onTelegramAuth = (user: any) => {
-        handleTelegramAuth(user);
-      };
-
-      telegramLoginRef.current.appendChild(script);
-    }
-  };
-
-  const handleTelegramAuth = async (telegramUser: any) => {
-    try {
-      setIsLoading(true);
-
-      // Отправляем данные на сервер для проверки
-      const response = await fetch('/api/auth/telegram', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user: telegramUser,
-          auth_date: telegramUser.auth_date,
-          hash: telegramUser.hash,
-          shopId: shopId,
-        }),
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
-        onAuthSuccess(userData);
-      } else {
-        setError('Ошибка авторизации через Telegram');
-        setIsLoading(false);
+        telegramLoginRef.current.appendChild(script);
+        console.log('Виджет авторизации Telegram добавлен');
+      } catch (err) {
+        console.error('Ошибка при загрузке виджета Telegram:', err);
+        setError('Ошибка при загрузке виджета авторизации');
       }
-    } catch (err) {
-      console.error('Ошибка авторизации:', err);
-      setError('Ошибка подключения');
-      setIsLoading(false);
     }
   };
 
@@ -170,6 +164,21 @@ export default function TelegramAuth({
           <CardContent className='space-y-4 text-center'>
             <div ref={telegramLoginRef} className='flex justify-center'></div>
             {error && <p className='text-sm text-destructive'>{error}</p>}
+
+            <div className='pt-4 mt-4 border-t'>
+              <p className='mb-2 text-sm text-muted-foreground'>
+                Или откройте приложение в Telegram:
+              </p>
+              <Button
+                onClick={() => {
+                  const botName = 'storeTest34523452345234534Bot';
+                  window.location.href = `https://t.me/${botName}?start=shop_${shopId}`;
+                }}
+                className='w-full'
+              >
+                Открыть в Telegram
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -201,6 +210,19 @@ export default function TelegramAuth({
             <Button onClick={checkTelegramAuth} className='w-full'>
               Попробовать снова
             </Button>
+
+            <div className='pt-4 mt-4 border-t'>
+              <Button
+                onClick={() => {
+                  const botName = 'storeTest34523452345234534Bot';
+                  window.location.href = `https://t.me/${botName}?start=shop_${shopId}`;
+                }}
+                variant='outline'
+                className='w-full'
+              >
+                Открыть в Telegram
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
