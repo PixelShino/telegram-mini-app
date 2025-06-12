@@ -21,7 +21,7 @@ import {
   Mail,
   Home,
   Building,
-  Stairs,
+  ArrowUpDown,
   Hash,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -262,7 +262,7 @@ export default function UserSetup({ user, onComplete }: UserSetupProps) {
                         htmlFor='floor'
                         className='flex items-center gap-2'
                       >
-                        <Stairs className='w-4 h-4' />
+                        <ArrowUpDown className='w-4 h-4' />
                         Этаж
                       </Label>
                       <Input

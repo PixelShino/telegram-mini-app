@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
-import { MapPin, Home, Building, Stairs, Hash } from 'lucide-react';
+import { MapPin, Home, Building, ArrowUpDown, Hash } from 'lucide-react';
 
 interface AddressData {
   country: string;
@@ -257,7 +257,7 @@ export default function OrderAddressSelector({
 
                   <div>
                     <Label htmlFor='floor' className='flex items-center gap-2'>
-                      <Stairs className='w-4 h-4' />
+                      <ArrowUpDown className='w-4 h-4' />
                       Этаж
                     </Label>
                     <Input

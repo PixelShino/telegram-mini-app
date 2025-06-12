@@ -20,7 +20,7 @@ import {
   CheckCircle,
   Home,
   Building,
-  Stairs,
+  ArrowUpDown,
   Hash,
 } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -46,7 +46,7 @@ interface OrderFormProps {
   user: any;
   shop: any;
   onBack: () => void;
-  onSubmit: (orderData: any) => void;
+  onSubmit: (orderData: any) => Promise<{ id: string } | undefined>;
 }
 
 export default function OrderForm({
@@ -152,7 +152,7 @@ export default function OrderForm({
 
       const result = await onSubmit(orderData);
 
-      if (result && result.id) {
+      if (result?.id) {
         setOrderId(result.id);
       }
 
@@ -363,7 +363,7 @@ export default function OrderForm({
                         htmlFor='floor'
                         className='flex items-center gap-2'
                       >
-                        <Stairs className='w-4 h-4' />
+                        <ArrowUpDown className='w-4 h-4' />
                         Этаж
                       </Label>
                       <Input
