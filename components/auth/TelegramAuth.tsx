@@ -99,6 +99,12 @@ export default function TelegramAuth({
     }
   };
 
+  // В компоненте TelegramAuth.tsx
+
+  // Добавьте состояние для отслеживания, нужна ли регистрация
+  const [needsRegistration, setNeedsRegistration] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
+
   const checkTelegramAuth = async () => {
     try {
       if (typeof window !== 'undefined') {
@@ -107,7 +113,7 @@ export default function TelegramAuth({
         if (tg && tg.initDataUnsafe?.user) {
           const user = tg.initDataUnsafe.user;
 
-          // Проверяем/создаем пользователя в БД
+          // Проверяем/получаем пользователя из БД без регистрации
           const response = await fetch('/api/auth/telegram', {
             method: 'POST',
             headers: {
@@ -117,26 +123,110 @@ export default function TelegramAuth({
               user: user,
               initData: tg.initData,
               shopId: shopId,
+              isRegistration: false, // Не регистрируем, только проверяем
             }),
           });
 
           if (response.ok) {
             const userData = await response.json();
-            onAuthSuccess(userData);
+
+            if (userData.needsRegistration) {
+              // Пользователь не зарегистрирован, показываем форму регистрации
+              setNeedsRegistration(true);
+              setUserData(userData);
+              setIsLoading(false);
+            } else {
+              // Пользователь уже зарегистрирован, продолжаем
+              onAuthSuccess(userData);
+            }
           } else {
             setError('Ошибка авторизации');
+            setIsLoading(false);
           }
         } else {
           setError('Необходимо открыть через Telegram');
+          setIsLoading(false);
         }
       }
     } catch (err) {
       console.error('Ошибка авторизации:', err);
       setError('Ошибка подключения');
-    } finally {
       setIsLoading(false);
     }
   };
+
+  // Функция для регистрации пользователя
+  const registerUser = async () => {
+    try {
+      setIsLoading(true);
+
+      const tg = (window as any).Telegram?.WebApp;
+
+      if (!tg || !tg.initDataUnsafe?.user) {
+        setError('Необходимо открыть через Telegram');
+        setIsLoading(false);
+        return;
+      }
+
+      const user = tg.initDataUnsafe.user;
+
+      // Отправляем запрос на регистрацию
+      const response = await fetch('/api/auth/telegram', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user: user,
+          initData: tg.initData,
+          shopId: shopId,
+          isRegistration: true, // Это запрос на регистрацию
+        }),
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        onAuthSuccess(userData);
+      } else {
+        setError('Ошибка регистрации');
+        setIsLoading(false);
+      }
+    } catch (err) {
+      console.error('Ошибка регистрации:', err);
+      setError('Ошибка подключения');
+      setIsLoading(false);
+    }
+  };
+
+  // Добавьте отображение формы регистрации
+  if (needsRegistration) {
+    return (
+      <div className='flex items-center justify-center min-h-screen bg-background'>
+        <Card className='w-full max-w-md mx-4'>
+          <CardHeader className='text-center'>
+            <CardTitle>Регистрация</CardTitle>
+            <CardDescription>
+              Для продолжения необходимо зарегистрироваться
+            </CardDescription>
+          </CardHeader>
+          <CardContent className='space-y-4'>
+            <div className='mb-4 text-center'>
+              <p>Имя: {userData?.name}</p>
+              <p>Имя пользователя: {userData?.username || 'Не указано'}</p>
+            </div>
+
+            <Button
+              onClick={registerUser}
+              className='w-full'
+              disabled={isLoading}
+            >
+              {isLoading ? 'Регистрация...' : 'Зарегистрироваться'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
