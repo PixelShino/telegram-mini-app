@@ -33,6 +33,21 @@ export default function TelegramAuth({
   const [error, setError] = useState<string | null>(null);
   const [isBrowser, setIsBrowser] = useState(false);
   const telegramLoginRef = useRef<HTMLDivElement>(null);
+  const skipAuthForDevelopment = () => {
+    // Создаем тестового пользователя для разработки
+    const testUser = {
+      id: 999999,
+      telegram_id: 999999,
+      name: 'Test User',
+      username: 'testuser',
+      avatar: null,
+      manager: false,
+      // Добавьте другие необходимые поля
+    };
+
+    // Вызываем функцию успешной авторизации
+    onAuthSuccess(testUser);
+  };
 
   // Проверяем, есть ли параметры авторизации в URL
   useEffect(() => {
@@ -222,6 +237,14 @@ export default function TelegramAuth({
               >
                 Открыть в Telegram
               </Button>
+              {/* Кнопка для пропуска авторизации (только для разработки) */}
+              <Button
+                onClick={skipAuthForDevelopment}
+                variant='outline'
+                className='w-full mt-4'
+              >
+                Пропустить авторизацию (для разработки)
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -245,6 +268,14 @@ export default function TelegramAuth({
 
             <Button onClick={() => window.location.reload()} className='w-full'>
               Попробовать снова
+            </Button>
+            {/* Кнопка для пропуска авторизации (только для разработки) */}
+            <Button
+              onClick={skipAuthForDevelopment}
+              variant='outline'
+              className='w-full mt-2'
+            >
+              Пропустить авторизацию (для разработки)
             </Button>
 
             <div className='pt-4 mt-4 border-t'>
