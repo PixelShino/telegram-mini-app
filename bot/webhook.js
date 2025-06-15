@@ -55,5 +55,5 @@ app.listen(PORT, () => {
 
 // Установка вебхука
 bot.api.setWebhook(
-  `https://your-webhook-url.com/webhook/${process.env.TELEGRAM_BOT_TOKEN}`,
+  `https://telegram-mini-app-tan-ten.vercel.app/api/bot/webhook/${process.env.TELEGRAM_BOT_TOKEN}`,
 );

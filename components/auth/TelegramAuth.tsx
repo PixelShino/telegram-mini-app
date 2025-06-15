@@ -230,7 +230,9 @@ export default function TelegramAuth({
               <Button
                 onClick={() => {
                   const botName = 'storeTest34523452345234534Bot';
-                  window.location.href = `https://t.me/${botName}?start=shop_${shopId}`;
+                  const deepLink = `https://t.me/${botName}?start=shop_${shopId}`;
+                  console.log('Открываем ссылку:', deepLink);
+                  window.location.href = deepLink;
                 }}
                 className='w-full'
               >
