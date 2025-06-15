@@ -1,3 +1,4 @@
+// components/auth/TelegramAuth.tsx
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
@@ -33,34 +34,6 @@ export default function TelegramAuth({
   const [error, setError] = useState<string | null>(null);
   const [isBrowser, setIsBrowser] = useState(false);
   const telegramLoginRef = useRef<HTMLDivElement>(null);
-  const skipAuthForDevelopment = () => {
-    // Создаем тестового пользователя для разработки
-    const testUser = {
-      id: 999999,
-      telegram_id: 999999,
-      name: 'Test User',
-      username: 'testuser',
-      email: 'test@example.com',
-      phone: '+79001234567',
-      default_address: JSON.stringify({
-        country: 'Россия',
-        city: 'Москва',
-        street: 'Тестовая',
-        house: '1',
-        apartment: '42',
-        isPrivateHouse: false,
-        entrance: '1',
-        floor: '5',
-        intercom: '1234',
-      }),
-      avatar: null,
-      manager: false,
-      created: new Date().toISOString(),
-    };
-
-    // Вызываем функцию успешной авторизации
-    onAuthSuccess(testUser);
-  };
 
   // Проверяем, есть ли параметры авторизации в URL
   useEffect(() => {
@@ -177,6 +150,14 @@ export default function TelegramAuth({
         if (tg && tg.initDataUnsafe?.user) {
           const user = tg.initDataUnsafe.user;
 
+          // Проверяем наличие необходимых полей
+          if (!user || !user.id) {
+            console.error('Неполные данные пользователя Telegram:', user);
+            setError('Неполные данные пользователя');
+            setIsLoading(false);
+            return;
+          }
+
           // Проверяем/создаем пользователя в БД
           const response = await fetch('/api/auth/telegram', {
             method: 'POST',
@@ -184,10 +165,15 @@ export default function TelegramAuth({
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              user: user,
+              user: {
+                id: user.id,
+                first_name: user.first_name || '',
+                last_name: user.last_name || '',
+                username: user.username || '',
+                photo_url: user.photo_url || null,
+              },
               initData: tg.initData,
               shopId: shopId,
-              isRegistration: true, // Автоматически регистрируем в WebApp
             }),
           });
 
@@ -250,14 +236,6 @@ export default function TelegramAuth({
               >
                 Открыть в Telegram
               </Button>
-              {/* Кнопка для пропуска авторизации (только для разработки) */}
-              <Button
-                onClick={skipAuthForDevelopment}
-                variant='outline'
-                className='w-full mt-4'
-              >
-                Пропустить авторизацию (для разработки)
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -281,14 +259,6 @@ export default function TelegramAuth({
 
             <Button onClick={() => window.location.reload()} className='w-full'>
               Попробовать снова
-            </Button>
-            {/* Кнопка для пропуска авторизации (только для разработки) */}
-            <Button
-              onClick={skipAuthForDevelopment}
-              variant='outline'
-              className='w-full mt-2'
-            >
-              Пропустить авторизацию (для разработки)
             </Button>
 
             <div className='pt-4 mt-4 border-t'>
