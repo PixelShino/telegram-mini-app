@@ -53,15 +53,27 @@ export default function UserSetup({ user, onComplete }: UserSetupProps) {
 
   // Парсинг адреса, если он есть
   useEffect(() => {
-    if (user.default_address) {
-      try {
-        const parsedAddress = JSON.parse(user.default_address);
-        setAddressData(parsedAddress);
-      } catch (e) {
-        // Если адрес не в JSON формате, оставляем пустые поля
+    // Проверяем, есть ли у пользователя уже заполненные данные из бота
+    if (user.phone && user.email && user.default_address) {
+      // Если данные уже заполнены через бота, пропускаем форму
+      onComplete(user);
+    } else {
+      // Заполняем форму имеющимися данными
+      setFormData({
+        email: user.email || '',
+        phone: user.phone || '',
+      });
+
+      if (user.default_address) {
+        try {
+          const parsedAddress = JSON.parse(user.default_address);
+          setAddressData(parsedAddress);
+        } catch (e) {
+          // Если адрес не в JSON формате, оставляем пустые поля
+        }
       }
     }
-  }, [user.default_address]);
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
