@@ -1,72 +1,73 @@
-import { type NextRequest, NextResponse } from "next/server"
+// app/api/bot/setup/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { createBot } from '@/lib/bot';
 
-// Настройка вебхука для бота
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const { botToken, webhookUrl } = await request.json()
-
-    if (!botToken || !webhookUrl) {
-      return NextResponse.json({ error: "Missing botToken or webhookUrl" }, { status: 400 })
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) {
+      return NextResponse.json({ error: 'Bot token not set' }, { status: 500 });
     }
 
-    // Устанавливаем вебхук
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        url: webhookUrl,
-        allowed_updates: ["message", "callback_query"],
-      }),
-    })
+    // URL вебхука
+    const webhookUrl = `${request.nextUrl.origin}/api/bot/webhook`;
+    console.log('Setting webhook URL:', webhookUrl);
 
-    const data = await response.json()
+    // Настраиваем вебхук
+    const response = await fetch(
+      `https://api.telegram.org/bot${token}/setWebhook`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: webhookUrl,
+          allowed_updates: ['message', 'callback_query'],
+        }),
+      },
+    );
+
+    const data = await response.json();
 
     if (!data.ok) {
-      return NextResponse.json({ error: data.description }, { status: 500 })
+      return NextResponse.json({ error: data.description }, { status: 500 });
     }
 
     // Устанавливаем команды бота
-    await fetch(`https://api.telegram.org/bot${botToken}/setMyCommands`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const commandsResponse = await fetch(
+      `https://api.telegram.org/bot${token}/setMyCommands`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          commands: [
+            { command: 'start', description: 'Начать работу с ботом' },
+            { command: 'help', description: 'Получить справку' },
+            { command: 'profile', description: 'Мой профиль' },
+            { command: 'orders', description: 'Мои заказы' },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        commands: [
-          { command: "stats", description: "Статистика магазина" },
-          { command: "orders", description: "Управление заказами" },
-          { command: "products", description: "Список товаров" },
-          { command: "addproduct", description: "Добавить товар" },
-          { command: "settings", description: "Настройки магазина" },
-          { command: "help", description: "Справка по командам" },
-        ],
-      }),
-    })
+    );
 
-    return NextResponse.json({ success: true, message: "Webhook and commands set successfully" })
-  } catch (error) {
-    console.error("Error setting webhook:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
-  }
-}
+    const commandsData = await commandsResponse.json();
 
-// Получение информации о текущем вебхуке
-export async function GET(request: NextRequest) {
-  try {
-    const botToken = request.nextUrl.searchParams.get("token")
-
-    if (!botToken) {
-      return NextResponse.json({ error: "Missing botToken" }, { status: 400 })
-    }
-
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`)
-    const data = await response.json()
-
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error("Error getting webhook info:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    return NextResponse.json({
+      webhook: data,
+      commands: commandsData,
+      webhookUrl,
+    });
+  } catch (error: any) {
+    console.error('Ошибка настройки вебхука:', error);
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        message: error.message || 'Unknown error',
+      },
+      { status: 500 },
+    );
   }
 }
