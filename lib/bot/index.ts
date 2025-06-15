@@ -161,6 +161,7 @@ export function createBot() {
 }
 
 // Функция для завершения регистрации
+// Функция для завершения регистрации
 async function completeRegistration(ctx: any) {
   const chatId = ctx.chat.id;
   const user = ctx.from;
@@ -176,8 +177,20 @@ async function completeRegistration(ctx: any) {
         telegram_id: chatId,
         name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
         username: user.username || '',
+        email: '', // Нужно добавить из сессии
         phone: '', // Нужно добавить из сессии
-        default_address: JSON.stringify(addressData),
+        // Используем отдельные поля для адреса вместо JSON
+        country: addressData.country || '',
+        city: addressData.city || '',
+        street: addressData.street || '',
+        house_number: addressData.house || '',
+        is_private_house: addressData.isPrivateHouse || false,
+        apartment: addressData.apartment
+          ? parseInt(addressData.apartment)
+          : null,
+        entrance: addressData.entrance ? parseInt(addressData.entrance) : null,
+        floor: addressData.floor ? parseInt(addressData.floor) : null,
+        intercom_code: addressData.intercom || '',
         avatar: null,
         manager: false,
       },
@@ -308,17 +321,8 @@ async function showProfile(ctx: any) {
     return;
   }
 
-  // Отображаем профиль
-  let addressText = 'Не указан';
-
-  if (user.default_address) {
-    try {
-      const address = JSON.parse(user.default_address);
-      addressText = formatAddress(address);
-    } catch (e) {
-      console.error('Ошибка при парсинге адреса:', e);
-    }
-  }
+  // Форматируем адрес с использованием новой структуры
+  const addressText = formatAddressFromUser(user);
 
   await ctx.reply(
     `Ваш профиль:\n\n` +
@@ -333,31 +337,46 @@ async function showProfile(ctx: any) {
 async function showWebsiteLink(ctx: any) {
   const chatId = ctx.chat.id;
 
+  // Получаем ID магазина из базы данных
+  const supabase = createClient();
+  const { data: shops } = await supabase
+    .from('shops')
+    .select('id')
+    .eq('status', 'active')
+    .limit(1);
+
+  const shopId = shops && shops.length > 0 ? shops[0].id : null;
+
+  if (!shopId) {
+    await ctx.reply('Извините, магазин временно недоступен.');
+    return;
+  }
+
   await ctx.reply('Нажмите на кнопку ниже, чтобы перейти на сайт:', {
     reply_markup: new InlineKeyboard().url(
       'Открыть сайт',
-      `https://telegram-mini-app-tan-ten.vercel.app/shop?user_id=${chatId}`,
+      `https://telegram-mini-app-tan-ten.vercel.app/shop/${shopId}`,
     ),
   });
 }
 
 // Вспомогательная функция для форматирования адреса
-function formatAddress(address: any): string {
+function formatAddressFromUser(user: any): string {
   const parts = [];
 
-  if (address.country) parts.push(address.country);
-  if (address.city) parts.push(address.city);
-  if (address.street) parts.push(`ул. ${address.street}`);
-  if (address.house) parts.push(`д. ${address.house}`);
+  if (user.country) parts.push(user.country);
+  if (user.city) parts.push(user.city);
+  if (user.street) parts.push(`ул. ${user.street}`);
+  if (user.house_number) parts.push(`д. ${user.house_number}`);
 
-  if (!address.isPrivateHouse) {
-    if (address.apartment) parts.push(`кв. ${address.apartment}`);
-    if (address.entrance) parts.push(`подъезд ${address.entrance}`);
-    if (address.floor) parts.push(`этаж ${address.floor}`);
-    if (address.intercom) parts.push(`домофон ${address.intercom}`);
+  if (!user.is_private_house) {
+    if (user.apartment) parts.push(`кв. ${user.apartment}`);
+    if (user.entrance) parts.push(`подъезд ${user.entrance}`);
+    if (user.floor) parts.push(`этаж ${user.floor}`);
+    if (user.intercom_code) parts.push(`домофон ${user.intercom_code}`);
   }
 
-  return parts.join(', ');
+  return parts.length > 0 ? parts.join(', ') : 'Не указан';
 }
 
 // Вспомогательная функция для получения текста статуса

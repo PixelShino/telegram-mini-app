@@ -57,7 +57,7 @@ export async function POST(
               [{ text: 'Обо мне' }, { text: 'Перейти на сайт' }],
             ],
             resize_keyboard: true,
-            persistent: true,
+            // persistent: true,
           },
         });
       } else {
@@ -433,6 +433,23 @@ async function handleMenuCommands(
       break;
 
     case 'Перейти на сайт':
+      // Получаем ID магазина из базы данных
+      const { data: shops } = await supabase
+        .from('shops')
+        .select('id')
+        .eq('status', 'active')
+        .limit(1);
+
+      const shopId = shops && shops.length > 0 ? shops[0].id : null;
+
+      if (!shopId) {
+        await bot.api.sendMessage(
+          chatId,
+          'Извините, магазин временно недоступен.',
+        );
+        return;
+      }
+
       // Отправляем ссылку на сайт
       await bot.api.sendMessage(
         chatId,
@@ -444,7 +461,7 @@ async function handleMenuCommands(
                 {
                   text: 'Открыть сайт',
                   web_app: {
-                    url: `https://telegram-mini-app-tan-ten.vercel.app/shop?user_id=${chatId}`,
+                    url: `https://telegram-mini-app-tan-ten.vercel.app/shop/${shopId}`,
                   },
                 },
               ],
