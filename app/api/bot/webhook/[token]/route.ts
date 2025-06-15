@@ -57,7 +57,6 @@ export async function POST(
               [{ text: 'Обо мне' }, { text: 'Перейти на сайт' }],
             ],
             resize_keyboard: true,
-            // persistent: true,
           },
         });
       } else {
@@ -198,8 +197,26 @@ export async function POST(
 
           if (isPrivateHouse) {
             // Если частный дом, завершаем регистрацию
-            await completeRegistration(chatId, userData, bot, supabase);
-            registrationData.delete(chatId);
+            if (userData.isUpdating) {
+              // Если это обновление адреса
+              await updateUserAddress(chatId, userData.address, supabase, bot);
+              registrationData.delete(chatId);
+              // Показываем главное меню
+              await bot.api.sendMessage(chatId, 'Главное меню:', {
+                reply_markup: {
+                  keyboard: [
+                    [{ text: 'Изменить адрес доставки' }],
+                    [{ text: 'Мои заказы' }, { text: 'История заказов' }],
+                    [{ text: 'Обо мне' }, { text: 'Перейти на сайт' }],
+                  ],
+                  resize_keyboard: true,
+                },
+              });
+            } else {
+              // Если это регистрация
+              await completeRegistration(chatId, userData, bot, supabase);
+              registrationData.delete(chatId);
+            }
           } else {
             // Если квартира, запрашиваем номер квартиры
             userData.step = 'apartment';
@@ -238,8 +255,26 @@ export async function POST(
         case 'intercom':
           // Сохраняем домофон и завершаем регистрацию
           userData.address.intercom = text;
-          await completeRegistration(chatId, userData, bot, supabase);
-          registrationData.delete(chatId);
+          if (userData.isUpdating) {
+            // Если это обновление адреса
+            await updateUserAddress(chatId, userData.address, supabase, bot);
+            registrationData.delete(chatId);
+            // Показываем главное меню
+            await bot.api.sendMessage(chatId, 'Главное меню:', {
+              reply_markup: {
+                keyboard: [
+                  [{ text: 'Изменить адрес доставки' }],
+                  [{ text: 'Мои заказы' }, { text: 'История заказов' }],
+                  [{ text: 'Обо мне' }, { text: 'Перейти на сайт' }],
+                ],
+                resize_keyboard: true,
+              },
+            });
+          } else {
+            // Если это регистрация
+            await completeRegistration(chatId, userData, bot, supabase);
+            registrationData.delete(chatId);
+          }
           break;
 
         default:
@@ -287,7 +322,19 @@ async function completeRegistration(
       username: telegramUser.username || '',
       email: userData.email || '',
       phone: userData.phone || '',
-      default_address: JSON.stringify(userData.address || {}),
+      country: userData.address?.country || '',
+      city: userData.address?.city || '',
+      street: userData.address?.street || '',
+      house_number: userData.address?.house || '',
+      is_private_house: userData.address?.isPrivateHouse || false,
+      apartment: userData.address?.apartment
+        ? parseInt(userData.address.apartment)
+        : null,
+      entrance: userData.address?.entrance
+        ? parseInt(userData.address.entrance)
+        : null,
+      floor: userData.address?.floor ? parseInt(userData.address.floor) : null,
+      intercom_code: userData.address?.intercom || '',
       manager: false,
     });
 
@@ -312,7 +359,6 @@ async function completeRegistration(
             [{ text: 'Обо мне' }, { text: 'Перейти на сайт' }],
           ],
           resize_keyboard: true,
-          persistent: true,
         },
       },
     );
@@ -322,6 +368,52 @@ async function completeRegistration(
       chatId,
       'Произошла ошибка при регистрации. Пожалуйста, попробуйте еще раз с команды /start',
     );
+  }
+}
+
+// Функция для обновления адреса пользователя
+async function updateUserAddress(
+  chatId: number,
+  addressData: any,
+  supabase: any,
+  bot: any,
+) {
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({
+        country: addressData.country || '',
+        city: addressData.city || '',
+        street: addressData.street || '',
+        house_number: addressData.house || '',
+        is_private_house: addressData.isPrivateHouse || false,
+        apartment: addressData.apartment
+          ? parseInt(addressData.apartment)
+          : null,
+        entrance: addressData.entrance ? parseInt(addressData.entrance) : null,
+        floor: addressData.floor ? parseInt(addressData.floor) : null,
+        intercom_code: addressData.intercom || '',
+      })
+      .eq('telegram_id', chatId);
+
+    if (error) {
+      console.error('Ошибка при обновлении адреса:', error);
+      await bot.api.sendMessage(
+        chatId,
+        'Произошла ошибка при обновлении адреса. Пожалуйста, попробуйте еще раз.',
+      );
+      return false;
+    }
+
+    await bot.api.sendMessage(chatId, 'Адрес успешно обновлен!');
+    return true;
+  } catch (error) {
+    console.error('Ошибка при обновлении адреса:', error);
+    await bot.api.sendMessage(
+      chatId,
+      'Произошла ошибка при обновлении адреса. Пожалуйста, попробуйте еще раз.',
+    );
+    return false;
   }
 }
 
@@ -335,7 +427,11 @@ async function handleMenuCommands(
   switch (text) {
     case 'Изменить адрес доставки':
       // Начинаем процесс изменения адреса
-      registrationData.set(chatId, { step: 'country', address: {} });
+      registrationData.set(chatId, {
+        step: 'country',
+        address: {},
+        isUpdating: true,
+      });
       await bot.api.sendMessage(chatId, 'Введите вашу страну:');
       break;
 
@@ -413,15 +509,10 @@ async function handleMenuCommands(
         return;
       }
 
-      // Форматируем адрес
+      // Форматируем адрес из отдельных полей, а не из default_address
       let addressText = 'Не указан';
-      if (user.default_address) {
-        try {
-          const address = JSON.parse(user.default_address);
-          addressText = formatAddress(address);
-        } catch (e) {
-          console.error('Ошибка при парсинге адреса:', e);
-        }
+      if (user.country || user.city || user.street || user.house_number) {
+        addressText = formatAddressFromUser(user);
       }
 
       await bot.api.sendMessage(
@@ -481,22 +572,22 @@ async function handleMenuCommands(
 }
 
 // Вспомогательная функция для форматирования адреса
-function formatAddress(address: any): string {
+function formatAddressFromUser(user: any): string {
   const parts = [];
 
-  if (address.country) parts.push(address.country);
-  if (address.city) parts.push(address.city);
-  if (address.street) parts.push(`ул. ${address.street}`);
-  if (address.house) parts.push(`д. ${address.house}`);
+  if (user.country) parts.push(user.country);
+  if (user.city) parts.push(user.city);
+  if (user.street) parts.push(`ул. ${user.street}`);
+  if (user.house_number) parts.push(`д. ${user.house_number}`);
 
-  if (!address.isPrivateHouse) {
-    if (address.apartment) parts.push(`кв. ${address.apartment}`);
-    if (address.entrance) parts.push(`подъезд ${address.entrance}`);
-    if (address.floor) parts.push(`этаж ${address.floor}`);
-    if (address.intercom) parts.push(`домофон ${address.intercom}`);
+  if (!user.is_private_house) {
+    if (user.apartment) parts.push(`кв. ${user.apartment}`);
+    if (user.entrance) parts.push(`подъезд ${user.entrance}`);
+    if (user.floor) parts.push(`этаж ${user.floor}`);
+    if (user.intercom_code) parts.push(`домофон ${user.intercom_code}`);
   }
 
-  return parts.join(', ');
+  return parts.length > 0 ? parts.join(', ') : 'Не указан';
 }
 
 // Вспомогательная функция для получения текста статуса
