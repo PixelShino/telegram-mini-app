@@ -40,9 +40,22 @@ export default function TelegramAuth({
       telegram_id: 999999,
       name: 'Test User',
       username: 'testuser',
+      email: 'test@example.com',
+      phone: '+79001234567',
+      default_address: JSON.stringify({
+        country: 'Россия',
+        city: 'Москва',
+        street: 'Тестовая',
+        house: '1',
+        apartment: '42',
+        isPrivateHouse: false,
+        entrance: '1',
+        floor: '5',
+        intercom: '1234',
+      }),
       avatar: null,
       manager: false,
-      // Добавьте другие необходимые поля
+      created: new Date().toISOString(),
     };
 
     // Вызываем функцию успешной авторизации
