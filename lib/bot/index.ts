@@ -334,30 +334,65 @@ async function showProfile(ctx: any) {
 }
 
 // Функция для отображения ссылки на сайт
+// async function showWebsiteLink(ctx: any) {
+//   const chatId = ctx.chat.id;
+
+//   // Получаем информацию о боте
+//   const botInfo = await ctx.api.getMe();
+//   const botUsername = botInfo.username;
+
+//   // Ищем магазин, связанный с этим ботом
+//   const supabase = createClient();
+//   const { data: shop, error } = await supabase
+//     .from('shops')
+//     .select('id, name')
+//     .eq('bot_username', botUsername)
+//     .eq('status', 'active')
+//     .single();
+
+//   if (error || !shop) {
+//     await ctx.reply('Извините, магазин временно недоступен.');
+//     return;
+//   }
+
+//   await ctx.reply(`Нажмите на кнопку ниже, чтобы перейти в магазин "${shop.name}":`, {
+//     reply_markup: new InlineKeyboard().url(
+//       'Открыть сайт',
+//       `https://telegram-mini-app-tan-ten.vercel.app/shop/${shop.id}`
+//     ),
+//   });
+// }
+// Функция для отображения ссылки на сайт
 async function showWebsiteLink(ctx: any) {
   const chatId = ctx.chat.id;
 
-  // Получаем ID магазина из базы данных
+  // Получаем информацию о боте
+  const botInfo = await ctx.api.getMe();
+  const botUsername = botInfo.username;
+
+  // Ищем магазин, связанный с этим ботом (проверяем оба варианта имени)
   const supabase = createClient();
-  const { data: shops } = await supabase
+  const { data: shop, error } = await supabase
     .from('shops')
-    .select('id')
+    .select('id, name')
+    .or(`bot_username.eq.${botUsername},bot_username.eq.@${botUsername}`)
     .eq('status', 'active')
-    .limit(1);
+    .single();
 
-  const shopId = shops && shops.length > 0 ? shops[0].id : null;
-
-  if (!shopId) {
+  if (error || !shop) {
     await ctx.reply('Извините, магазин временно недоступен.');
     return;
   }
 
-  await ctx.reply('Нажмите на кнопку ниже, чтобы перейти на сайт:', {
-    reply_markup: new InlineKeyboard().url(
-      'Открыть сайт',
-      `https://telegram-mini-app-tan-ten.vercel.app/shop/${shopId}`,
-    ),
-  });
+  await ctx.reply(
+    `Нажмите на кнопку ниже, чтобы перейти в магазин "${shop.name}":`,
+    {
+      reply_markup: new InlineKeyboard().url(
+        'Открыть сайт',
+        `https://telegram-mini-app-tan-ten.vercel.app/shop/${shop.id}`,
+      ),
+    },
+  );
 }
 
 // Вспомогательная функция для форматирования адреса
