@@ -18,6 +18,7 @@ declare global {
     Telegram?: {
       WebApp?: any;
     };
+    onTelegramAuth?: (user: any) => void;
   }
 }
 
@@ -34,6 +35,59 @@ export default function TelegramAuth({
   const [error, setError] = useState<string | null>(null);
   const [isBrowser, setIsBrowser] = useState(false);
   const telegramLoginRef = useRef<HTMLDivElement>(null);
+
+  // Обработчик авторизации через Telegram виджет
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Добавляем глобальный обработчик для виджета
+      window.onTelegramAuth = (user) => {
+        console.log('Telegram Auth успешно:', user);
+
+        // Отправляем данные на сервер для проверки и создания пользователя
+        handleTelegramAuth(user);
+      };
+    }
+
+    return () => {
+      // Очищаем обработчик при размонтировании
+      if (typeof window !== 'undefined') {
+        window.onTelegramAuth = undefined;
+      }
+    };
+  }, []);
+
+  // Обработка данных авторизации от виджета
+  const handleTelegramAuth = async (telegramUser: any) => {
+    try {
+      setIsLoading(true);
+
+      // Отправляем данные на сервер для проверки
+      const response = await fetch('/api/auth/telegram', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user: telegramUser,
+          auth_date: telegramUser.auth_date,
+          hash: telegramUser.hash,
+          shopId: shopId,
+        }),
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        onAuthSuccess(userData);
+      } else {
+        setError('Ошибка авторизации через Telegram');
+        setIsLoading(false);
+      }
+    } catch (err) {
+      console.error('Ошибка авторизации:', err);
+      setError('Ошибка подключения');
+      setIsLoading(false);
+    }
+  };
 
   // Проверяем, есть ли параметры авторизации в URL
   useEffect(() => {
@@ -118,6 +172,7 @@ export default function TelegramAuth({
         // Создаем скрипт для виджета авторизации
         const script = document.createElement('script');
         script.src = 'https://telegram.org/js/telegram-widget.js?22';
+
         // Имя бота без символа @
         script.setAttribute(
           'data-telegram-login',
@@ -127,10 +182,10 @@ export default function TelegramAuth({
         script.setAttribute('data-radius', '8');
         script.setAttribute('data-request-access', 'write');
         script.setAttribute('data-userpic', 'true');
-        script.setAttribute(
-          'data-auth-url',
-          `${window.location.origin}/api/auth/telegram-login?shop_id=${shopId}`,
-        );
+
+        // Используем onTelegramAuth вместо data-auth-url
+        script.setAttribute('data-onauth', 'onTelegramAuth(user)');
+
         script.async = true;
 
         telegramLoginRef.current.appendChild(script);
@@ -196,6 +251,23 @@ export default function TelegramAuth({
     }
   };
 
+  // Функция для пропуска авторизации (для разработки)
+  const skipAuthForDevelopment = () => {
+    const testUser = {
+      id: 999999,
+      telegram_id: 999999,
+      name: 'Test User',
+      username: 'testuser',
+      email: 'test@example.com',
+      phone: '+79001234567',
+      default_address: '',
+      avatar: null,
+      manager: false,
+    };
+
+    onAuthSuccess(testUser);
+  };
+
   if (isLoading) {
     return (
       <div className='flex items-center justify-center min-h-screen bg-background'>
@@ -220,7 +292,9 @@ export default function TelegramAuth({
             </CardDescription>
           </CardHeader>
           <CardContent className='space-y-4 text-center'>
-            <div ref={telegramLoginRef} className='flex justify-center'></div>
+            <div className='py-4'>
+              <div ref={telegramLoginRef} className='flex justify-center'></div>
+            </div>
             {error && <p className='text-sm text-destructive'>{error}</p>}
 
             <div className='pt-4 mt-4 border-t'>
@@ -237,6 +311,21 @@ export default function TelegramAuth({
                 className='w-full'
               >
                 Открыть в Telegram
+              </Button>
+            </div>
+
+            {/* Кнопка для пропуска авторизации (только для разработки) */}
+            <div className='pt-4 mt-4 border-t border-dashed'>
+              <p className='mb-2 text-xs text-muted-foreground'>
+                Только для разработки:
+              </p>
+              <Button
+                onClick={skipAuthForDevelopment}
+                variant='outline'
+                size='sm'
+                className='w-full'
+              >
+                Пропустить авторизацию
               </Button>
             </div>
           </CardContent>
@@ -281,6 +370,21 @@ export default function TelegramAuth({
                 className='w-full'
               >
                 Открыть в Telegram
+              </Button>
+            </div>
+
+            {/* Кнопка для пропуска авторизации (только для разработки) */}
+            <div className='pt-4 mt-4 border-t border-dashed'>
+              <p className='mb-2 text-xs text-muted-foreground'>
+                Только для разработки:
+              </p>
+              <Button
+                onClick={skipAuthForDevelopment}
+                variant='outline'
+                size='sm'
+                className='w-full'
+              >
+                Пропустить авторизацию
               </Button>
             </div>
           </CardContent>
