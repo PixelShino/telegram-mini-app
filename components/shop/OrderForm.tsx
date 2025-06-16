@@ -22,6 +22,8 @@ import {
   Building,
   ArrowUpDown,
   Hash,
+  Phone,
+  Mail,
 } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
@@ -45,6 +47,7 @@ interface OrderFormProps {
   totalPrice: number;
   user: any;
   shop: any;
+  isTelegram: boolean; // Добавьте этот параметр
   onBack: () => void;
   onSubmit: (orderData: any) => Promise<{ id: string } | undefined>;
 }
@@ -54,6 +57,7 @@ export default function OrderForm({
   totalPrice,
   user,
   shop,
+  isTelegram,
   onBack,
   onSubmit,
 }: OrderFormProps) {
@@ -83,6 +87,8 @@ export default function OrderForm({
       address: user?.default_address || '',
       comment: '',
       deliveryTime: '',
+      phone: user?.phone || '',
+      email: user?.email || '',
     });
 
     //доп проверка
@@ -91,6 +97,60 @@ export default function OrderForm({
         <div className='p-4 text-center'>Загрузка данных пользователя...</div>
       );
     }
+
+    // В начале компонента OrderForm добавьте:
+    useEffect(() => {
+      // Проверяем, открыто ли приложение в Telegram WebApp
+      if (
+        isTelegram &&
+        typeof window !== 'undefined' &&
+        window.Telegram?.WebApp
+      ) {
+        const tg = window.Telegram.WebApp;
+
+        // Если пользователь авторизован в Telegram, получаем его данные
+        if (tg.initDataUnsafe?.user) {
+          const tgUser = tg.initDataUnsafe.user;
+
+          // Сохраняем данные пользователя в базу данных
+          saveTelegramUserData(tgUser);
+        }
+      }
+    }, [isTelegram]);
+
+    // Функция для сохранения данных пользователя из Telegram
+    const saveTelegramUserData = async (tgUser: any) => {
+      try {
+        const response = await fetch('/api/users/telegram', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            telegram_id: tgUser.id,
+            username: tgUser.username || '',
+            first_name: tgUser.first_name || '',
+            last_name: tgUser.last_name || '',
+            photo_url: tgUser.photo_url || '',
+          }),
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          // Если у пользователя уже есть сохраненный адрес, используем его
+          if (userData.default_address) {
+            try {
+              const parsedAddress = JSON.parse(userData.default_address);
+              setNewAddressData(parsedAddress);
+            } catch (e) {
+              console.error('Ошибка при парсинге адреса:', e);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка при сохранении данных пользователя:', error);
+      }
+    };
 
     // Парсинг сохраненного адреса
     useEffect(() => {
@@ -157,20 +217,61 @@ export default function OrderForm({
       setIsSubmitting(true);
 
       try {
-        if (!shop?.id || !user?.id) {
-          console.error('Отсутствуют необходимые данные:', { shop, user });
+        if (!shop?.id) {
+          console.error('Отсутствуют необходимые данные:', { shop });
           return;
         }
 
+        // Определяем адрес для заказа
+        const orderAddress =
+          addressChoice === 'default' && parsedDefaultAddress
+            ? formatAddress(parsedDefaultAddress)
+            : formatAddress(newAddressData);
+
+        // Собираем данные пользователя
+        const customerInfo = {
+          name:
+            user?.name ||
+            (isTelegram &&
+              window.Telegram?.WebApp?.initDataUnsafe?.user?.first_name) ||
+            '',
+          phone: formData.phone || user?.phone || '',
+          email: formData.email || user?.email || '',
+        };
+
         const orderData = {
           shop_id: shop.id,
-          user_id: user.id,
+          user_id: user?.id,
+          telegram_id: isTelegram
+            ? window.Telegram?.WebApp?.initDataUnsafe?.user?.id
+            : null,
           items,
           total_price: totalPrice,
-          address: formData.address || '',
+          address: orderAddress,
           comment: formData.comment || '',
           delivery_time: formData.deliveryTime || '',
+          customerInfo,
         };
+
+        // Если это новый адрес и пользователь авторизован, сохраняем его
+        if (addressChoice === 'new' && user?.id) {
+          try {
+            await fetch('/api/users/address', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                userId: user.id,
+                address: newAddressData,
+                phone: formData.phone,
+                email: formData.email,
+              }),
+            });
+          } catch (error) {
+            console.error('Ошибка при сохранении данных пользователя:', error);
+          }
+        }
 
         const result = await onSubmit(orderData);
 
@@ -292,6 +393,44 @@ export default function OrderForm({
 
               {addressChoice === 'new' && (
                 <div className='pt-4 mt-4 space-y-3 border-t'>
+                  <div>
+                    <Label htmlFor='phone' className='flex items-center gap-2'>
+                      <Phone className='w-4 h-4' />
+                      Телефон *
+                    </Label>
+                    <Input
+                      id='phone'
+                      value={formData.phone || ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          phone: e.target.value,
+                        }))
+                      }
+                      placeholder='+7 (999) 123-45-67'
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor='email' className='flex items-center gap-2'>
+                      <Mail className='w-4 h-4' />
+                      Email *
+                    </Label>
+                    <Input
+                      id='email'
+                      type='email'
+                      value={formData.email || ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          email: e.target.value,
+                        }))
+                      }
+                      placeholder='example@email.com'
+                      required
+                    />
+                  </div>
                   <div>
                     <Label htmlFor='country'>Страна</Label>
                     <Input

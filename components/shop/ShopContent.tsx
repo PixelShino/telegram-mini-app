@@ -358,7 +358,7 @@ export default function ShopContent({
             onSubmit={handleOrderSubmit}
             user={telegramUser}
             shop={shop} // telegramUser={telegramUser}
-            // isTelegram={isTelegram}
+            isTelegram={isTelegram}
           />
         </div>
         <Toaster position='top-center' />
