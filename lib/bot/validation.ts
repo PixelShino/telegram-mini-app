@@ -1,22 +1,32 @@
-// Функции валидации
 export function validateName(name: string): boolean {
-  return name.length >= 2 && name.length <= 50;
+  const isValid = name.length >= 2 && name.length <= 50;
+  console.log('Валидация имени:', name, isValid);
+  return isValid;
 }
 
 export function validatePhone(phone: string): boolean {
   // Проверка формата телефона: +7XXXXXXXXXX или 8XXXXXXXXXX
-  return /^(\+7|8)[0-9]{10}$/.test(phone.replace(/\s+/g, ''));
+  const cleaned = phone.replace(/\s+/g, '');
+  const isValid = /^(\+7|8)[0-9]{10}$/.test(cleaned);
+  console.log('Валидация телефона:', phone, isValid);
+  return isValid;
 }
 
 export function validateEmail(email: string): boolean {
   // Простая проверка формата email
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  console.log('Валидация email:', email, isValid);
+  return isValid;
 }
 
 export function validateAddress(text: string): boolean {
-  return text.length >= 2 && text.length <= 100;
+  const isValid = text.length >= 2 && text.length <= 100;
+  console.log('Валидация адреса:', text, isValid);
+  return isValid;
 }
 
 export function validateNumber(text: string): boolean {
-  return /^\d+$/.test(text);
+  const isValid = /^\d+$/.test(text);
+  console.log('Валидация числа:', text, isValid);
+  return isValid;
 }

@@ -31,15 +31,15 @@ export function createBot() {
   // Обработка ответа о частном доме
   bot.hears(['Да', 'Нет'], handleHouseTypeResponse);
 
-  // Обработка текстовых сообщений для регистрации
-  bot.on('message:text', handleRegistrationMessage);
-
   // Обработка кнопок главного меню
   bot.hears('Изменить адрес доставки', handleChangeAddress);
   bot.hears('Мои заказы', showOrders);
   bot.hears('История заказов', showOrderHistory);
   bot.hears('Обо мне', showProfile);
   bot.hears('Перейти на сайт', showWebsiteLink);
+
+  // Обработка текстовых сообщений для регистрации - должна быть последней!
+  bot.on('message:text', handleRegistrationMessage);
 
   return bot;
 }

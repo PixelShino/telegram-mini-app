@@ -1,3 +1,4 @@
+// lib/bot/handlers/start.ts
 import { createClient } from '@/lib/supabase/server';
 import { MyContext } from '../types';
 import { Keyboard } from 'grammy';
@@ -24,6 +25,7 @@ export async function handleStart(ctx: MyContext) {
     // Пользователь уже зарегистрирован
     ctx.session.registrationComplete = true;
     ctx.session.userId = chatId;
+    ctx.session.step = 'main_menu';
 
     await showMainMenu(ctx);
   } else {
