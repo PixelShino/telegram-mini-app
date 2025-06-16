@@ -18,9 +18,9 @@ export async function completeRegistration(ctx: MyContext) {
         telegram_id: chatId,
         name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
         username: user.username || '',
-        email: ctx.session.email || '',
-        phone: ctx.session.phone || '',
-        // Используем отдельные поля для адреса вместо JSON
+        email: addressData.email || '',
+        phone: addressData.phone || '',
+        // Используем отдельные поля для адреса
         country: addressData.country || '',
         city: addressData.city || '',
         street: addressData.street || '',
