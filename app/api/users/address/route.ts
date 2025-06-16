@@ -4,9 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, address, phone, email } = await request.json();
+    const { telegram_id, address, phone, email } = await request.json();
 
-    if (!userId || !address) {
+    if (!telegram_id || !address) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 },
@@ -15,15 +15,10 @@ export async function POST(request: NextRequest) {
 
     const supabase = createClient();
 
-    // Обновляем адрес и контактные данные пользователя
+    // Обновляем адрес пользователя
     const { data, error } = await supabase
       .from('users')
       .update({
-        // Контактные данные
-        phone: phone || undefined,
-        email: email || undefined,
-
-        // Адрес
         country: address.country || '',
         city: address.city || '',
         street: address.street || '',
@@ -34,15 +29,17 @@ export async function POST(request: NextRequest) {
         floor: address.floor ? parseInt(address.floor) : null,
         intercom_code: address.intercom || '',
         default_address: JSON.stringify(address),
+        phone: phone || undefined,
+        email: email || undefined,
       })
-      .eq('id', userId)
+      .eq('telegram_id', telegram_id)
       .select()
       .single();
 
     if (error) {
-      console.error('Ошибка при обновлении данных пользователя:', error);
+      console.error('Ошибка при обновлении адреса:', error);
       return NextResponse.json(
-        { error: 'Failed to update user data' },
+        { error: 'Failed to update address' },
         { status: 500 },
       );
     }

@@ -222,11 +222,11 @@ export default function OrderForm({
           return;
         }
 
-        // Определяем адрес для заказа
-        const orderAddress =
+        // Получаем данные адреса
+        const addressData =
           addressChoice === 'default' && parsedDefaultAddress
-            ? formatAddress(parsedDefaultAddress)
-            : formatAddress(newAddressData);
+            ? parsedDefaultAddress
+            : newAddressData;
 
         // Собираем данные пользователя
         const customerInfo = {
@@ -239,22 +239,33 @@ export default function OrderForm({
           email: formData.email || user?.email || '',
         };
 
+        // Получаем telegram_id пользователя
+        const telegram_id = isTelegram
+          ? window.Telegram?.WebApp?.initDataUnsafe?.user?.id
+          : user?.telegram_id;
+
+        // Подготавливаем данные заказа
         const orderData = {
           shop_id: shop.id,
-          user_id: user?.id,
-          telegram_id: isTelegram
-            ? window.Telegram?.WebApp?.initDataUnsafe?.user?.id
-            : null,
-          items,
+          telegram_id,
+          // Отправляем товары в нужном формате
+          items: items.map((item) => ({
+            product: {
+              id: item.product.id,
+              price: item.product.price,
+            },
+            quantity: item.quantity,
+          })),
           total_price: totalPrice,
-          address: orderAddress,
+          // Отправляем адрес как объект
+          address: addressData,
           comment: formData.comment || '',
           delivery_time: formData.deliveryTime || '',
           customerInfo,
         };
 
         // Если это новый адрес и пользователь авторизован, сохраняем его
-        if (addressChoice === 'new' && user?.id) {
+        if (addressChoice === 'new' && telegram_id) {
           try {
             await fetch('/api/users/address', {
               method: 'POST',
@@ -262,8 +273,8 @@ export default function OrderForm({
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                userId: user.id,
-                address: newAddressData,
+                telegram_id,
+                address: addressData,
                 phone: formData.phone,
                 email: formData.email,
               }),
@@ -273,7 +284,20 @@ export default function OrderForm({
           }
         }
 
-        const result = await onSubmit(orderData);
+        // Отправляем заказ
+        const response = await fetch('/api/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(orderData),
+        });
+
+        if (!response.ok) {
+          throw new Error('Ошибка при создании заказа');
+        }
+
+        const result = await response.json();
 
         if (result?.id) {
           setOrderId(result.id);
@@ -432,7 +456,13 @@ export default function OrderForm({
                     />
                   </div>
                   <div>
-                    <Label htmlFor='country'>Страна</Label>
+                    <Label
+                      htmlFor='country'
+                      className='flex items-center gap-2'
+                    >
+                      <MapPin className='w-4 h-4' />
+                      Страна
+                    </Label>
                     <Input
                       id='country'
                       value={newAddressData.country}
@@ -444,7 +474,10 @@ export default function OrderForm({
                   </div>
 
                   <div>
-                    <Label htmlFor='city'>Город</Label>
+                    <Label htmlFor='city' className='flex items-center gap-2'>
+                      <Building className='w-4 h-4' />
+                      Город
+                    </Label>
                     <Input
                       id='city'
                       value={newAddressData.city}
@@ -456,7 +489,10 @@ export default function OrderForm({
                   </div>
 
                   <div>
-                    <Label htmlFor='street'>Улица</Label>
+                    <Label htmlFor='street' className='flex items-center gap-2'>
+                      <MapPin className='w-4 h-4' />
+                      Улица
+                    </Label>
                     <Input
                       id='street'
                       value={newAddressData.street}
@@ -482,7 +518,7 @@ export default function OrderForm({
                     />
                   </div>
 
-                  <div className='flex items-center space-x-2'>
+                  <div className='flex items-center gap-2 py-2'>
                     <Checkbox
                       id='isPrivateHouse'
                       checked={newAddressData.isPrivateHouse}
@@ -490,78 +526,81 @@ export default function OrderForm({
                         handleNewAddressChange('isPrivateHouse', !!checked)
                       }
                     />
-                    <Label htmlFor='isPrivateHouse'>Частный дом</Label>
+                    <Label
+                      htmlFor='isPrivateHouse'
+                      className='font-medium cursor-pointer'
+                    >
+                      Частный дом
+                    </Label>
                   </div>
 
-                  {!newAddressData.isPrivateHouse && (
-                    <>
-                      <div>
-                        <Label
-                          htmlFor='apartment'
-                          className='flex items-center gap-2'
-                        >
-                          <Building className='w-4 h-4' />
-                          Квартира
-                        </Label>
-                        <Input
-                          id='apartment'
-                          value={newAddressData.apartment}
-                          onChange={(e) =>
-                            handleNewAddressChange('apartment', e.target.value)
-                          }
-                          placeholder='42'
-                        />
-                      </div>
+                  <>
+                    <div>
+                      <Label
+                        htmlFor='apartment'
+                        className='flex items-center gap-2'
+                      >
+                        <Building className='w-4 h-4' />
+                        Квартира
+                      </Label>
+                      <Input
+                        id='apartment'
+                        value={newAddressData.apartment}
+                        onChange={(e) =>
+                          handleNewAddressChange('apartment', e.target.value)
+                        }
+                        placeholder='42'
+                      />
+                    </div>
 
-                      <div>
-                        <Label htmlFor='entrance'>Подъезд</Label>
-                        <Input
-                          id='entrance'
-                          value={newAddressData.entrance}
-                          onChange={(e) =>
-                            handleNewAddressChange('entrance', e.target.value)
-                          }
-                          placeholder='1'
-                        />
-                      </div>
+                    <div>
+                      <Label htmlFor='entrance'>Подъезд</Label>
+                      <Input
+                        id='entrance'
+                        value={newAddressData.entrance}
+                        onChange={(e) =>
+                          handleNewAddressChange('entrance', e.target.value)
+                        }
+                        placeholder='1'
+                      />
+                    </div>
 
-                      <div>
-                        <Label
-                          htmlFor='floor'
-                          className='flex items-center gap-2'
-                        >
-                          <ArrowUpDown className='w-4 h-4' />
-                          Этаж
-                        </Label>
-                        <Input
-                          id='floor'
-                          value={newAddressData.floor}
-                          onChange={(e) =>
-                            handleNewAddressChange('floor', e.target.value)
-                          }
-                          placeholder='5'
-                        />
-                      </div>
+                    <div>
+                      <Label
+                        htmlFor='floor'
+                        className='flex items-center gap-2'
+                      >
+                        <ArrowUpDown className='w-4 h-4' />
+                        Этаж
+                      </Label>
+                      <Input
+                        id='floor'
+                        value={newAddressData.floor}
+                        onChange={(e) =>
+                          handleNewAddressChange('floor', e.target.value)
+                        }
+                        placeholder='5'
+                      />
+                    </div>
 
-                      <div>
-                        <Label
-                          htmlFor='intercom'
-                          className='flex items-center gap-2'
-                        >
-                          <Hash className='w-4 h-4' />
-                          Код домофона
-                        </Label>
-                        <Input
-                          id='intercom'
-                          value={newAddressData.intercom}
-                          onChange={(e) =>
-                            handleNewAddressChange('intercom', e.target.value)
-                          }
-                          placeholder='1234'
-                        />
-                      </div>
-                    </>
-                  )}
+                    <div>
+                      <Label
+                        htmlFor='intercom'
+                        className='flex items-center gap-2'
+                      >
+                        <Hash className='w-4 h-4' />
+                        Код домофона
+                      </Label>
+                      <Input
+                        id='intercom'
+                        value={newAddressData.intercom}
+                        onChange={(e) =>
+                          handleNewAddressChange('intercom', e.target.value)
+                        }
+                        placeholder='1234'
+                      />
+                    </div>
+                  </>
                 </div>
               )}
             </CardContent>
