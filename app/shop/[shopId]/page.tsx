@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import TelegramAuth from '@/components/auth/TelegramAuth';
-import UserSetup from '@/components/user/UserSetup';
+// import UserSetup from '@/components/user/UserSetup';
 import ShopContent from '@/components/shop/ShopContent';
 import { Toaster } from 'react-hot-toast';
 

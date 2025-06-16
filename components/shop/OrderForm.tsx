@@ -29,6 +29,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { CartItem } from '@/types/cart';
+import toast from 'react-hot-toast';
 
 interface AddressData {
   country: string;
@@ -245,44 +246,29 @@ export default function OrderForm({
           : user?.telegram_id;
 
         // Подготавливаем данные заказа
+
         const orderData = {
           shop_id: shop.id,
-          telegram_id,
-          // Отправляем товары в нужном формате
+          telegram_id: Number(telegram_id) || null,
           items: items.map((item) => ({
             product: {
-              id: item.product.id,
-              price: item.product.price,
+              id: Number(item.product.id), //
+              price: Number(item.product.price),
             },
-            quantity: item.quantity,
+            quantity: Number(item.quantity),
           })),
-          total_price: totalPrice,
-          // Отправляем адрес как объект
+          total_price: Number(totalPrice),
           address: addressData,
           comment: formData.comment || '',
-          delivery_time: formData.deliveryTime || '',
-          customerInfo,
+          delivery_time: formData.deliveryTime || 'now',
+          customerInfo: {
+            name: customerInfo.name || '',
+            phone: customerInfo.phone || '',
+            email: customerInfo.email || '',
+          },
         };
 
-        // Если это новый адрес и пользователь авторизован, сохраняем его
-        if (addressChoice === 'new' && telegram_id) {
-          try {
-            await fetch('/api/users/address', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                telegram_id,
-                address: addressData,
-                phone: formData.phone,
-                email: formData.email,
-              }),
-            });
-          } catch (error) {
-            console.error('Ошибка при сохранении данных пользователя:', error);
-          }
-        }
+        console.log('Отправляем данные заказа:', orderData);
 
         // Отправляем заказ
         const response = await fetch('/api/orders', {
@@ -293,19 +279,23 @@ export default function OrderForm({
           body: JSON.stringify(orderData),
         });
 
+        const responseData = await response.json();
+
         if (!response.ok) {
-          throw new Error('Ошибка при создании заказа');
+          console.error('Ошибка ответа сервера:', responseData);
+          throw new Error(responseData.error || 'Ошибка при создании заказа');
         }
 
-        const result = await response.json();
-
-        if (result?.id) {
-          setOrderId(result.id);
+        if (responseData?.id) {
+          setOrderId(responseData.id);
         }
 
         setStep(3);
       } catch (error) {
         console.error('Ошибка при оформлении заказа:', error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        toast.error('Ошибка при оформлении заказа: ' + errorMessage);
       } finally {
         setIsSubmitting(false);
       }

@@ -15,6 +15,17 @@ export async function POST(request: NextRequest) {
       customerInfo,
     } = await request.json();
 
+    console.log('Получены данные заказа:', {
+      shop_id,
+      telegram_id,
+      items: items.length,
+      total_price,
+      address,
+      comment,
+      delivery_time,
+      customerInfo,
+    });
+
     if (!shop_id || !items || !total_price || !address) {
       return NextResponse.json(
         { error: 'Missing required fields' },
@@ -45,8 +56,9 @@ export async function POST(request: NextRequest) {
         phone: customerInfo?.phone || '',
         email: customerInfo?.email || '',
         comment,
-        deliver_on_time: delivery_time === 'asap' ? null : delivery_time,
-        total_amount: total_price,
+        deliver_on_time:
+          delivery_time === 'asap' ? null : new Date().toISOString(),
+        total_amount: Number(total_price),
         created_at: new Date().toISOString(),
       })
       .select()
@@ -54,8 +66,30 @@ export async function POST(request: NextRequest) {
 
     if (orderError) {
       console.error('Ошибка при создании заказа:', orderError);
+      console.error('Данные заказа:', {
+        shop_id,
+        user_id: telegram_id,
+        status: 'pending',
+        country: address.country || '',
+        city: address.city || '',
+        street: address.street || '',
+        house_number: address.house || '',
+        is_private_house: address.isPrivateHouse || false,
+        apartment: address.apartment ? parseInt(address.apartment) : null,
+        entrance: address.entrance ? parseInt(address.entrance) : null,
+        floor: address.floor ? parseInt(address.floor) : null,
+        intercom_code: address.intercom || '',
+        phone: customerInfo?.phone || '',
+        email: customerInfo?.email || '',
+        comment,
+        deliver_on_time: delivery_time === 'asap' ? null : delivery_time,
+        total_amount: total_price,
+      });
       return NextResponse.json(
-        { error: 'Failed to create order' },
+        {
+          error: 'Failed to create order',
+          details: orderError.message || String(orderError),
+        },
         { status: 500 },
       );
     }
@@ -86,8 +120,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(order);
   } catch (error) {
     console.error('Ошибка обработки запроса:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: errorMessage },
       { status: 500 },
     );
   }
