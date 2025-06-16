@@ -178,23 +178,28 @@ async function handleStreetInput(ctx: MyContext) {
 }
 
 async function handleHouseInput(ctx: MyContext) {
-  const house = ctx.message!.text;
+  try {
+    const house = ctx.message!.text.trim(); // Удаление пробелов
 
-  // Проверяем валидность номера дома
-  if (!house || house.length === 0) {
-    console.log('Номер дома не прошел валидацию:', house);
-    await ctx.reply(
-      'Номер дома не может быть пустым. Пожалуйста, введите номер дома:',
-    );
-    return;
+    if (!house || house.length === 0) {
+      throw new Error('Номер дома не может быть пустым');
+    }
+
+    const numericValue = Number(house);
+    if (isNaN(numericValue)) {
+      throw new Error('Номер дома должен быть числом');
+    }
+
+    if (!ctx.session.addressData) ctx.session.addressData = {};
+    ctx.session.addressData.house = house;
+    ctx.session.step = 'registration_private_house';
+    await ctx.reply('Это частный дом?', {
+      reply_markup: new Keyboard().text('Да').text('Нет').resized().oneTime(),
+    });
+  } catch (error) {
+    console.error('Error in handleHouseInput:', error);
+    await ctx.reply('Ошибка при вводе номера дома. Пожалуйста, введите число.');
   }
-
-  if (!ctx.session.addressData) ctx.session.addressData = {};
-  ctx.session.addressData.house = house;
-  ctx.session.step = 'registration_private_house';
-  await ctx.reply('Это частный дом?', {
-    reply_markup: new Keyboard().text('Да').text('Нет').resized().oneTime(),
-  });
 }
 
 async function handleApartmentInput(ctx: MyContext) {
@@ -216,21 +221,28 @@ async function handleApartmentInput(ctx: MyContext) {
 }
 
 async function handleEntranceInput(ctx: MyContext) {
-  const entrance = ctx.message!.text;
+  try {
+    const entrance = ctx.message!.text.trim(); // Удаление пробелов
 
-  // Проверяем валидность номера подъезда
-  if (!validateNumber(entrance!)) {
-    console.log('Номер подъезда не прошел валидацию:', entrance);
+    if (!entrance || entrance.length === 0) {
+      throw new Error('Номер подъезда не может быть пустым');
+    }
+
+    const numericValue = Number(entrance);
+    if (isNaN(numericValue) || !Number.isInteger(numericValue)) {
+      throw new Error('Номер подъезда должен быть целым числом');
+    }
+
+    if (!ctx.session.addressData) ctx.session.addressData = {};
+    ctx.session.addressData.entrance = entrance;
+    ctx.session.step = 'registration_floor';
+    await ctx.reply('Введите этаж:');
+  } catch (error) {
+    console.error('Error in handleEntranceInput:', error);
     await ctx.reply(
-      'Номер подъезда должен содержать только цифры. Пожалуйста, введите корректный номер:',
+      'Ошибка при вводе номера подъезда. Пожалуйста, введите целое число.',
     );
-    return;
   }
-
-  if (!ctx.session.addressData) ctx.session.addressData = {};
-  ctx.session.addressData.entrance = entrance;
-  ctx.session.step = 'registration_floor';
-  await ctx.reply('Введите этаж:');
 }
 
 async function handleFloorInput(ctx: MyContext) {
