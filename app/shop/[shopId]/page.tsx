@@ -79,12 +79,10 @@ export default function ShopPage({
     );
   }
 
-  // Если пользователь не заполнил обязательные данные
-  if (!user.email || !user.phone) {
-    return <UserSetup user={user} onComplete={handleUserSetupComplete} />;
-  }
-
-  // Показываем магазин
+  // Если пользователь не заполнил обязательные данные и это не Telegram
+  // if ((!user.email || !user.phone) && !isTelegram) {
+  //   return <UserSetup user={user} onComplete={handleUserSetupComplete} />;
+  // }
   // Показываем магазин
   return (
     <>
