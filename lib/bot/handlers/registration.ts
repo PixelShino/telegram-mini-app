@@ -178,28 +178,23 @@ async function handleStreetInput(ctx: MyContext) {
 }
 
 async function handleHouseInput(ctx: MyContext) {
-  try {
-    const house = ctx.message!.text.trim(); // Удаление пробелов
+  const house = ctx.message!.text;
 
-    if (!house || house.length === 0) {
-      throw new Error('Номер дома не может быть пустым');
-    }
-
-    const numericValue = Number(house);
-    if (isNaN(numericValue)) {
-      throw new Error('Номер дома должен быть числом');
-    }
-
-    if (!ctx.session.addressData) ctx.session.addressData = {};
-    ctx.session.addressData.house = house;
-    ctx.session.step = 'registration_private_house';
-    await ctx.reply('Это частный дом?', {
-      reply_markup: new Keyboard().text('Да').text('Нет').resized().oneTime(),
-    });
-  } catch (error) {
-    console.error('Error in handleHouseInput:', error);
-    await ctx.reply('Ошибка при вводе номера дома. Пожалуйста, введите число.');
+  // Проверяем валидность номера дома
+  if (!validateNumber(house!)) {
+    console.log('Номер дома не прошел валидацию:', house);
+    await ctx.reply(
+      'Неверный формат номера дома. Пожалуйста, введите корректный номер:',
+    );
+    return;
   }
+
+  if (!ctx.session.addressData) ctx.session.addressData = {};
+  ctx.session.addressData.house = house;
+  ctx.session.step = 'registration_private_house';
+  await ctx.reply('Это частный дом?', {
+    reply_markup: new Keyboard().text('Да').text('Нет').resized().oneTime(),
+  });
 }
 
 async function handleApartmentInput(ctx: MyContext) {
@@ -209,7 +204,7 @@ async function handleApartmentInput(ctx: MyContext) {
   if (!validateNumber(apartment!)) {
     console.log('Номер квартиры не прошел валидацию:', apartment);
     await ctx.reply(
-      'Номер квартиры должен содержать только цифры. Пожалуйста, введите корректный номер:',
+      'Неверный формат номера квартиры. Пожалуйста, введите корректный номер:',
     );
     return;
   }
@@ -221,28 +216,21 @@ async function handleApartmentInput(ctx: MyContext) {
 }
 
 async function handleEntranceInput(ctx: MyContext) {
-  try {
-    const entrance = ctx.message!.text.trim(); // Удаление пробелов
+  const entrance = ctx.message!.text;
 
-    if (!entrance || entrance.length === 0) {
-      throw new Error('Номер подъезда не может быть пустым');
-    }
-
-    const numericValue = Number(entrance);
-    if (isNaN(numericValue) || !Number.isInteger(numericValue)) {
-      throw new Error('Номер подъезда должен быть целым числом');
-    }
-
-    if (!ctx.session.addressData) ctx.session.addressData = {};
-    ctx.session.addressData.entrance = entrance;
-    ctx.session.step = 'registration_floor';
-    await ctx.reply('Введите этаж:');
-  } catch (error) {
-    console.error('Error in handleEntranceInput:', error);
+  // Проверяем валидность номера подъезда
+  if (!validateNumber(entrance!)) {
+    console.log('Номер подъезда не прошел валидацию:', entrance);
     await ctx.reply(
-      'Ошибка при вводе номера подъезда. Пожалуйста, введите целое число.',
+      'Неверный формат номера подъезда. Пожалуйста, введите корректный номер:',
     );
+    return;
   }
+
+  if (!ctx.session.addressData) ctx.session.addressData = {};
+  ctx.session.addressData.entrance = entrance;
+  ctx.session.step = 'registration_floor';
+  await ctx.reply('Введите этаж:');
 }
 
 async function handleFloorInput(ctx: MyContext) {
@@ -252,7 +240,7 @@ async function handleFloorInput(ctx: MyContext) {
   if (!validateNumber(floor!)) {
     console.log('Номер этажа не прошел валидацию:', floor);
     await ctx.reply(
-      'Номер этажа должен содержать только цифры. Пожалуйста, введите корректный номер:',
+      'Неверный формат номера этажа. Пожалуйста, введите корректный номер:',
     );
     return;
   }
