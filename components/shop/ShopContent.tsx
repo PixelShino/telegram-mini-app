@@ -19,7 +19,7 @@ import {
 import toast, { Toaster } from 'react-hot-toast';
 import type { Shop } from '@/types/shop';
 import type { Product } from '@/types/product';
-import type { TelegramUser } from '@/types/user';
+import type { DatabaseUser, TelegramUser } from '@/types/user';
 import type { CartItem } from '@/types/cart';
 import ProductModal from './ProductModal';
 import OrderForm from './OrderForm';
@@ -102,13 +102,14 @@ interface ShopContentProps {
   shop: Shop;
   telegramUser: TelegramUser;
   isTelegram: boolean;
-  user: any;
+  user?: DatabaseUser;
 }
 
 export default function ShopContent({
   shop,
   telegramUser,
   isTelegram,
+  user,
 }: ShopContentProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -315,7 +316,7 @@ export default function ShopContent({
         },
         body: JSON.stringify({
           shop_id: shop.id,
-          telegram_user_id: telegramUser.id,
+          telegram_id: Number(telegramUser.id),
           telegram_username: telegramUser.username,
           items: orderData.items,
           total_amount: orderData.totalPrice,
@@ -333,7 +334,7 @@ export default function ShopContent({
           try {
             // Получаем все товары в корзине
             const cartResponse = await fetch(
-              `/api/cart?telegram_id=${telegramUser.id}`,
+              `/api/cart?telegram_id=${Number(telegramUser.id)}`,
             );
             if (cartResponse.ok) {
               const cartItems = await cartResponse.json();
@@ -370,7 +371,6 @@ export default function ShopContent({
     }
   };
 
-  // Добавьте эту функцию после объявления других функций
   const saveCartToDatabase = async (product: Product, quantity: number) => {
     if (!telegramUser?.id) return;
 
@@ -381,7 +381,7 @@ export default function ShopContent({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          telegram_id: telegramUser.id,
+          telegram_id: Number(telegramUser.id),
           product_id: product.id,
           quantity,
           shop_id: shop.id,
@@ -396,7 +396,9 @@ export default function ShopContent({
     if (!telegramUser?.id) return;
 
     try {
-      const response = await fetch(`/api/cart?telegram_id=${telegramUser.id}`);
+      const response = await fetch(
+        `/api/cart?telegram_id=${Number(telegramUser.id)}`,
+      );
 
       if (response.ok) {
         const cartData = await response.json();
