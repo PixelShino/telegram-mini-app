@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
         `
         id,
         quantity,
+        product_id,
         products:product_id (
           id,
           name,
@@ -77,11 +78,29 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (existingItem) {
+      // Если количество 0 или меньше, удаляем товар
+      if (quantity <= 0) {
+        const { error } = await supabase
+          .from('cart_items')
+          .delete()
+          .eq('id', existingItem.id);
+
+        if (error) {
+          console.error('Ошибка при удалении товара из корзины:', error);
+          return NextResponse.json(
+            { error: 'Failed to remove item from cart' },
+            { status: 500 },
+          );
+        }
+
+        return NextResponse.json({ success: true, deleted: true });
+      }
+
       // Обновляем количество
       const { data, error } = await supabase
         .from('cart_items')
         .update({
-          quantity: existingItem.quantity + (quantity || 1),
+          quantity,
           updated_at: new Date().toISOString(),
         })
         .eq('id', existingItem.id)
@@ -98,13 +117,18 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(data);
     } else {
+      // Если количество 0 или меньше, не добавляем товар
+      if (quantity <= 0) {
+        return NextResponse.json({ success: true, noaction: true });
+      }
+
       // Добавляем новый товар
       const { data, error } = await supabase
         .from('cart_items')
         .insert({
           telegram_id,
           product_id,
-          quantity: quantity || 1,
+          quantity,
           shop_id,
         })
         .select()

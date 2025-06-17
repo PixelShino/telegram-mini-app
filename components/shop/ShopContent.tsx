@@ -257,6 +257,51 @@ export default function ShopContent({
     }
   }, [telegramUser?.id]);
 
+  // В начале компонента ShopContent, после других useEffect
+  useEffect(() => {
+    // Проверяем, открыто ли приложение в Telegram WebApp
+    if (
+      isTelegram &&
+      typeof window !== 'undefined' &&
+      window.Telegram?.WebApp
+    ) {
+      const tg = window.Telegram.WebApp;
+
+      // Если пользователь авторизован в Telegram, получаем его данные
+      if (tg.initDataUnsafe?.user) {
+        const tgUser = tg.initDataUnsafe.user;
+
+        // Сохраняем данные пользователя в базу данных
+        saveTelegramUserData(tgUser);
+      }
+    }
+  }, [isTelegram]);
+
+  // Функция для сохранения данных пользователя из Telegram
+  const saveTelegramUserData = async (tgUser: any) => {
+    try {
+      const response = await fetch('/api/users/telegram', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          telegram_id: tgUser.id,
+          username: tgUser.username || '',
+          first_name: tgUser.first_name || '',
+          last_name: tgUser.last_name || '',
+          photo_url: tgUser.photo_url || '',
+        }),
+      });
+
+      if (response.ok) {
+        console.log('Данные пользователя Telegram сохранены успешно');
+      }
+    } catch (error) {
+      console.error('Ошибка при сохранении данных пользователя:', error);
+    }
+  };
+
   const fetchProducts = async () => {
     try {
       const response = await fetch(`/api/shops/${shop.id}/products`);
@@ -307,6 +352,16 @@ export default function ShopContent({
   };
 
   const handleOrderSubmit = async (orderData: any) => {
+    let telegram_id: string | number | undefined = telegramUser?.id;
+
+    if (
+      isTelegram &&
+      typeof window !== 'undefined' &&
+      window.Telegram?.WebApp?.initDataUnsafe?.user
+    ) {
+      telegram_id = window.Telegram.WebApp.initDataUnsafe.user.id;
+    }
+
     try {
       const response = await fetch('/api/orders', {
         method: 'POST',
@@ -315,7 +370,7 @@ export default function ShopContent({
         },
         body: JSON.stringify({
           shop_id: shop.id,
-          telegram_user_id: telegramUser.id,
+          telegram_id: Number(telegram_id),
           telegram_username: telegramUser.username,
           items: orderData.items,
           total_amount: orderData.totalPrice,
@@ -328,12 +383,11 @@ export default function ShopContent({
         const order = await response.json();
         clearCart();
 
-        // Очищаем корзину в базе данных
-        if (telegramUser?.id) {
+        if (telegram_id) {
           try {
             // Получаем все товары в корзине
             const cartResponse = await fetch(
-              `/api/cart?telegram_id=${Number(telegramUser.id)}`,
+              `/api/cart?telegram_id=${Number(telegram_id)}`,
             );
             if (cartResponse.ok) {
               const cartItems = await cartResponse.json();
@@ -372,7 +426,18 @@ export default function ShopContent({
 
   // Добавьте эту функцию после объявления других функций
   const saveCartToDatabase = async (product: Product, quantity: number) => {
-    if (!telegramUser?.id) return;
+    // Получаем telegram_id напрямую из Telegram WebApp, если доступно
+    let telegram_id = telegramUser?.id;
+
+    if (
+      isTelegram &&
+      typeof window !== 'undefined' &&
+      window.Telegram?.WebApp?.initDataUnsafe?.user
+    ) {
+      telegram_id = window.Telegram.WebApp.initDataUnsafe.user.id;
+    }
+
+    if (!telegram_id) return;
 
     try {
       await fetch('/api/cart', {
@@ -381,7 +446,7 @@ export default function ShopContent({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          telegram_id: Number(telegramUser.id),
+          telegram_id: Number(telegram_id),
           product_id: product.id,
           quantity,
           shop_id: shop.id,
@@ -393,11 +458,21 @@ export default function ShopContent({
   };
 
   const loadCartFromDatabase = async () => {
-    if (!telegramUser?.id) return;
+    let telegram_id = telegramUser?.id;
+
+    if (
+      isTelegram &&
+      typeof window !== 'undefined' &&
+      window.Telegram?.WebApp?.initDataUnsafe?.user
+    ) {
+      telegram_id = window.Telegram.WebApp.initDataUnsafe.user.id;
+    }
+
+    if (!telegram_id) return;
 
     try {
       const response = await fetch(
-        `/api/cart?telegram_id=${Number(telegramUser.id)}`,
+        `/api/cart?telegram_id=${Number(telegram_id)}`,
       );
 
       if (response.ok) {
