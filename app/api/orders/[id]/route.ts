@@ -1,7 +1,7 @@
 // app/api/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { sendOrderStatusNotification } from '@/lib/telegram';
+import { sendOrderStatusNotification } from '@/lib/';
 
 export async function PATCH(
   request: NextRequest,
