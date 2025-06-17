@@ -1,6 +1,7 @@
 // app/api/bot/webhook/[token]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createBot } from '@/lib/bot';
+// import { Bot } from 'grammy';
+import { processCommand } from '@/lib/bot/commands';
 
 export async function POST(
   request: NextRequest,
@@ -8,32 +9,27 @@ export async function POST(
 ) {
   try {
     const token = params.token;
-    console.log('Получен вебхук от Telegram, токен:', token);
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
-    // Проверяем, что токен совпадает с токеном бота
-    if (token !== process.env.TELEGRAM_BOT_TOKEN) {
-      console.error('Неверный токен:', token);
+    if (token !== botToken) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
     const update = await request.json();
-    console.log('Данные вебхука:', JSON.stringify(update));
+    console.log('Получен вебхук от Telegram, токен:', token);
+    console.log('Данные вебхука:', update);
 
-    // Создаем экземпляр бота из модульной структуры
-    const bot = createBot();
+    if (update.message?.text && update.message.text.startsWith('/')) {
+      const chatId = update.message.chat.id;
+      const command = update.message.text;
+      const user = update.message.from;
 
-    // Обрабатываем обновление
-    await bot.handleUpdate(update);
+      await processCommand(command, chatId, user);
+    }
 
     return NextResponse.json({ ok: true });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Ошибка обработки вебхука:', error);
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        message: error.message || 'Unknown error',
-      },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

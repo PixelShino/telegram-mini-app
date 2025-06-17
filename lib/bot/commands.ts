@@ -313,15 +313,28 @@ async function sendMessage(chatId: number, text: string) {
     return;
   }
 
-  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: text,
-      parse_mode: 'HTML',
-    }),
-  });
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${botToken}/sendMessage`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: text,
+          parse_mode: 'HTML',
+        }),
+      },
+    );
+
+    const data = await response.json();
+    if (!data.ok) {
+      console.error('Ошибка отправки сообщения:', data);
+    }
+    return data;
+  } catch (error) {
+    console.error('Ошибка при отправке сообщения в Telegram:', error);
+  }
 }
