@@ -333,7 +333,7 @@ export default function ShopContent({
           try {
             // Получаем все товары в корзине
             const cartResponse = await fetch(
-              `/api/cart?telegram_id=${telegramUser.id}`,
+              `/api/cart?telegram_id=${Number(telegramUser.id)}`,
             );
             if (cartResponse.ok) {
               const cartItems = await cartResponse.json();
@@ -381,7 +381,7 @@ export default function ShopContent({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          telegram_id: telegramUser.id,
+          telegram_id: Number(telegramUser.id),
           product_id: product.id,
           quantity,
           shop_id: shop.id,
@@ -396,7 +396,9 @@ export default function ShopContent({
     if (!telegramUser?.id) return;
 
     try {
-      const response = await fetch(`/api/cart?telegram_id=${telegramUser.id}`);
+      const response = await fetch(
+        `/api/cart?telegram_id=${Number(telegramUser.id)}`,
+      );
 
       if (response.ok) {
         const cartData = await response.json();
