@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Button } from '@/components/ui/button';
@@ -121,6 +121,8 @@ export default function ShopContent({
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(
     null,
   );
+  const [saveCartInProgress, setSaveCartInProgress] = useState(false);
+  const saveCartTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const {
     items,
@@ -316,28 +318,43 @@ export default function ShopContent({
 
   const handleAddToCart = (product: Product, quantity = 1) => {
     if (quantity > 0) {
-      addItem(product, quantity);
-      // Сохраняем в базе данных
-      saveCartToDatabase(product, quantity);
+      // Если quantity положительное, добавляем или увеличиваем количество
+      const currentQuantity = getItemQuantity(product.id);
+      const newQuantity = currentQuantity + quantity;
+
+      // Обновляем локальное состояние
+      if (currentQuantity === 0) {
+        addItem(product, quantity);
+      } else {
+        updateQuantity(product.id, newQuantity);
+      }
+
+      // Сохраняем в базе данных АБСОЛЮТНОЕ значение
+      saveCartToDatabase(product, newQuantity);
+
       toast.success(`${product.name} добавлен в корзину`, {
         icon: <ShoppingBag className='w-4 h-4' />,
         duration: 2000,
       });
     } else {
-      // Если количество отрицательное, уменьшаем
+      // Если quantity отрицательное, уменьшаем
       const currentQuantity = getItemQuantity(product.id);
       const newQuantity = currentQuantity + quantity;
+
       if (newQuantity <= 0) {
+        // Удаляем товар
         removeItem(product.id);
         // Удаляем из базы данных (отправляем 0 для удаления)
         saveCartToDatabase(product, 0);
+
         toast.success(`${product.name} удален из корзины`, {
           icon: <Trash2 className='w-4 h-4' />,
           duration: 2000,
         });
       } else {
+        // Обновляем количество
         updateQuantity(product.id, newQuantity);
-        // Обновляем в базе данных
+        // Обновляем в базе данных АБСОЛЮТНОЕ значение
         saveCartToDatabase(product, newQuantity);
       }
     }
@@ -392,11 +409,25 @@ export default function ShopContent({
             if (cartResponse.ok) {
               const cartItems = await cartResponse.json();
 
-              // Удаляем каждый товар
+              // Удаляем каждый товар последовательно
               for (const item of cartItems) {
-                await fetch(`/api/cart/${item.id}`, {
-                  method: 'DELETE',
-                });
+                try {
+                  const deleteResponse = await fetch(`/api/cart/${item.id}`, {
+                    method: 'DELETE',
+                  });
+
+                  if (!deleteResponse.ok) {
+                    console.error(
+                      `Ошибка при удалении товара ${item.id} из корзины:`,
+                      await deleteResponse.json(),
+                    );
+                  }
+                } catch (deleteError) {
+                  console.error(
+                    `Ошибка при удалении товара ${item.id} из корзины:`,
+                    deleteError,
+                  );
+                }
               }
             }
           } catch (error) {
@@ -440,7 +471,14 @@ export default function ShopContent({
     if (!telegram_id) return;
 
     try {
-      await fetch('/api/cart', {
+      console.log('Сохранение товара в корзину:', {
+        telegram_id: Number(telegram_id),
+        product_id: product.id,
+        quantity, // Используем переданное значение
+        shop_id: shop.id,
+      });
+
+      const response = await fetch('/api/cart', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -448,10 +486,17 @@ export default function ShopContent({
         body: JSON.stringify({
           telegram_id: Number(telegram_id),
           product_id: product.id,
-          quantity,
+          quantity, // Используем переданное значение
           shop_id: shop.id,
         }),
       });
+
+      const data = await response.json();
+      console.log('Ответ от API корзины:', data);
+
+      if (!response.ok) {
+        console.error('Ошибка при сохранении корзины:', data);
+      }
     } catch (error) {
       console.error('Ошибка при сохранении корзины:', error);
     }
@@ -629,6 +674,7 @@ export default function ShopContent({
                               onClick={() => {
                                 if (quantity <= 1) {
                                   removeItem(product.id);
+                                  saveCartToDatabase(product, 0);
                                   toast.success(
                                     `${product.name} удален из корзины`,
                                     {
@@ -638,6 +684,7 @@ export default function ShopContent({
                                   );
                                 } else {
                                   updateQuantity(product.id, quantity - 1);
+                                  saveCartToDatabase(product, quantity - 1);
                                 }
                               }}
                               className='w-8 h-8 p-0'
@@ -656,6 +703,7 @@ export default function ShopContent({
                                   quantity === 0
                                 ) {
                                   updateQuantity(product.id, quantity + 1);
+                                  saveCartToDatabase(product, quantity + 1);
                                   toast.success(
                                     `Добавлено еще: ${product.name}`,
                                     {
@@ -663,6 +711,8 @@ export default function ShopContent({
                                       duration: 2000,
                                     },
                                   );
+                                } else {
+                                  console.log(product.allow_quantity_change);
                                 }
                               }}
                               className='w-8 h-8 p-0'
@@ -683,6 +733,7 @@ export default function ShopContent({
                               size='sm'
                               onClick={() => {
                                 removeItem(product.id);
+                                saveCartToDatabase(product, 0);
                                 toast.success(
                                   `${product.name} удален из корзины`,
                                   {
@@ -823,6 +874,8 @@ export default function ShopContent({
         onClose={() => setSelectedProduct(null)}
         onAddToCart={handleAddToCart}
         isTelegram={isTelegram}
+        cartQuantity={selectedProduct ? getItemQuantity(selectedProduct.id) : 0}
+        onGoToCart={() => setCurrentView('cart')}
       />
 
       <Toaster position='top-center' />

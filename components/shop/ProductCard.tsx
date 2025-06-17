@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Plus, Minus, ShoppingCart } from 'lucide-react';
 import type { Product } from '@/types/product';
+import { useState } from 'react';
 
 interface ProductCardProps {
   product: Product;
@@ -23,6 +24,8 @@ export default function ProductCard({
   cartQuantity,
   isTelegram,
 }: ProductCardProps) {
+  const [lastClickTime, setLastClickTime] = useState(0);
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
     onAddToCart(product, 1);
@@ -34,11 +37,25 @@ export default function ProductCard({
 
   const handleQuantityChange = (e: React.MouseEvent, change: number) => {
     e.stopPropagation();
+
+    // Добавляем задержку для предотвращения быстрых нажатий
+    const now = Date.now();
+    if (now - lastClickTime < 300) {
+      return; // Игнорируем слишком быстрые нажатия
+    }
+    setLastClickTime(now);
+
     if (change < 0 && cartQuantity <= 1) {
-      // Если количество = 1 и нажали минус, удаляем товар
-      onAddToCart(product, -cartQuantity); // Это удалит товар полностью
+      // Если количество = 1 и нажали минус, удаляем товар полностью
+      onAddToCart(product, -cartQuantity);
     } else {
+      // Передаем изменение, а не абсолютное значение
       onAddToCart(product, change);
+    }
+
+    if (isTelegram && typeof window !== 'undefined') {
+      const tg = (window as any).Telegram.WebApp;
+      tg.HapticFeedback.impactOccurred('light');
     }
   };
 
@@ -91,7 +108,7 @@ export default function ProductCard({
                 size='sm'
                 onClick={(e) => handleQuantityChange(e, 1)}
                 className='p-0 h-7 w-7'
-                // disabled={!product.allow_quantity_change && cartQuantity >= 1}
+                disabled={!product.allow_quantity_change && cartQuantity >= 1}
               >
                 <Plus className='w-3 h-3' />
               </Button>
