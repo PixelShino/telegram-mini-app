@@ -19,7 +19,7 @@ import {
 import toast, { Toaster } from 'react-hot-toast';
 import type { Shop } from '@/types/shop';
 import type { Product } from '@/types/product';
-import type { DatabaseUser, TelegramUser } from '@/types/user';
+import type { TelegramUser } from '@/types/user';
 import type { CartItem } from '@/types/cart';
 import ProductModal from './ProductModal';
 import OrderForm from './OrderForm';
@@ -102,14 +102,13 @@ interface ShopContentProps {
   shop: Shop;
   telegramUser: TelegramUser;
   isTelegram: boolean;
-  user?: DatabaseUser;
+  user: any;
 }
 
 export default function ShopContent({
   shop,
   telegramUser,
   isTelegram,
-  user,
 }: ShopContentProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -316,7 +315,7 @@ export default function ShopContent({
         },
         body: JSON.stringify({
           shop_id: shop.id,
-          telegram_id: Number(telegramUser.id),
+          telegram_user_id: telegramUser.id,
           telegram_username: telegramUser.username,
           items: orderData.items,
           total_amount: orderData.totalPrice,
@@ -371,6 +370,7 @@ export default function ShopContent({
     }
   };
 
+  // Добавьте эту функцию после объявления других функций
   const saveCartToDatabase = async (product: Product, quantity: number) => {
     if (!telegramUser?.id) return;
 
