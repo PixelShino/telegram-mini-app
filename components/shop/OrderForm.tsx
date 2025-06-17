@@ -17,7 +17,7 @@ import {
   MapPin,
   Clock,
   ShoppingCart,
-  CheckCircle,
+  CircleCheck,
   Home,
   Building,
   ArrowUpDown,
@@ -327,18 +327,18 @@ export default function OrderForm({
           <Card>
             <CardContent className='pt-6 pb-6 text-center'>
               <div className='flex justify-center mb-4'>
-                <CheckCircle className='w-16 h-16 text-green-500' />
+                <CircleCheck className='w-16 h-16 text-green-500' />
               </div>
               <h2 className='mb-2 text-2xl font-bold'>
                 Заказ успешно оформлен!
               </h2>
               <p className='mb-4 text-muted-foreground'>
                 {orderId
-                  ? `Номер заказа: #${orderId.substring(0, 8)}`
+                  ? `Номер заказа: #${orderId}`
                   : 'Ваш заказ принят в обработку'}
               </p>
               <p className='mb-6'>
-                Мы свяжемся с вами в ближайшее время для подтверждения заказа.
+                Вам будет отправляться сообщение о статусе заказа.
               </p>
               <Button onClick={onBack} className='w-full'>
                 Вернуться в магазин
