@@ -251,6 +251,12 @@ export default function ShopContent({
     }
   }, [currentView, isTelegram]);
 
+  useEffect(() => {
+    if (telegramUser?.id) {
+      loadCartFromDatabase();
+    }
+  }, [telegramUser?.id]);
+
   const fetchProducts = async () => {
     try {
       const response = await fetch(`/api/shops/${shop.id}/products`);
@@ -266,6 +272,8 @@ export default function ShopContent({
   const handleAddToCart = (product: Product, quantity = 1) => {
     if (quantity > 0) {
       addItem(product, quantity);
+      // Сохраняем в базе данных
+      saveCartToDatabase(product, quantity);
       toast.success(`${product.name} добавлен в корзину`, {
         icon: <ShoppingBag className='w-4 h-4' />,
         duration: 2000,
@@ -276,12 +284,16 @@ export default function ShopContent({
       const newQuantity = currentQuantity + quantity;
       if (newQuantity <= 0) {
         removeItem(product.id);
+        // Удаляем из базы данных (отправляем 0 для удаления)
+        saveCartToDatabase(product, 0);
         toast.success(`${product.name} удален из корзины`, {
           icon: <Trash2 className='w-4 h-4' />,
           duration: 2000,
         });
       } else {
         updateQuantity(product.id, newQuantity);
+        // Обновляем в базе данных
+        saveCartToDatabase(product, newQuantity);
       }
     }
   };
@@ -316,6 +328,28 @@ export default function ShopContent({
         const order = await response.json();
         clearCart();
 
+        // Очищаем корзину в базе данных
+        if (telegramUser?.id) {
+          try {
+            // Получаем все товары в корзине
+            const cartResponse = await fetch(
+              `/api/cart?telegram_id=${telegramUser.id}`,
+            );
+            if (cartResponse.ok) {
+              const cartItems = await cartResponse.json();
+
+              // Удаляем каждый товар
+              for (const item of cartItems) {
+                await fetch(`/api/cart/${item.id}`, {
+                  method: 'DELETE',
+                });
+              }
+            }
+          } catch (error) {
+            console.error('Ошибка при очистке корзины в базе данных:', error);
+          }
+        }
+
         toast.success('Заказ успешно оформлен!', {
           icon: <CheckCircle className='w-4 h-4' />,
           duration: 4000,
@@ -333,6 +367,91 @@ export default function ShopContent({
       console.error('Ошибка оформления заказа:', error);
       toast.error('Ошибка при оформлении заказа');
       throw error;
+    }
+  };
+
+  // Добавьте эту функцию после объявления других функций
+  const saveCartToDatabase = async (product: Product, quantity: number) => {
+    if (!telegramUser?.id) return;
+
+    try {
+      await fetch('/api/cart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          telegram_id: telegramUser.id,
+          product_id: product.id,
+          quantity,
+          shop_id: shop.id,
+        }),
+      });
+    } catch (error) {
+      console.error('Ошибка при сохранении корзины:', error);
+    }
+  };
+
+  const loadCartFromDatabase = async () => {
+    if (!telegramUser?.id) return;
+
+    try {
+      const response = await fetch(`/api/cart?telegram_id=${telegramUser.id}`);
+
+      if (response.ok) {
+        const cartData = await response.json();
+
+        // Очищаем текущую корзину перед загрузкой
+        clearCart();
+
+        // Загружаем товары из базы данных
+        for (const item of cartData) {
+          // Получаем полную информацию о товаре из базы данных
+          try {
+            const productResponse = await fetch(
+              `/api/products/${item.product_id}`,
+            );
+            if (productResponse.ok) {
+              const productData = await productResponse.json();
+              // Добавляем товар в корзину только если он доступен
+              if (productData && productData.status === 'active') {
+                addItem(productData, item.quantity);
+              } else {
+                // Товар недоступен, уведомляем пользователя
+                toast.error(
+                  `Товар "${item.products?.name || 'Неизвестный товар'}" больше недоступен и был удален из корзины`,
+                  {
+                    duration: 4000,
+                  },
+                );
+
+                // Удаляем недоступный товар из сохраненной корзины
+                await fetch(`/api/cart/${item.id}`, {
+                  method: 'DELETE',
+                });
+              }
+            } else {
+              // Не удалось получить информацию о товаре
+              toast.error(
+                `Не удалось загрузить информацию о товаре из корзины`,
+                {
+                  duration: 3000,
+                },
+              );
+            }
+          } catch (productError) {
+            console.error(
+              'Ошибка при загрузке информации о товаре:',
+              productError,
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке корзины:', error);
+      toast.error('Не удалось загрузить сохраненную корзину', {
+        duration: 3000,
+      });
     }
   };
 
