@@ -31,8 +31,9 @@ export async function POST(
     if (update.callback_query) {
       const callbackData = update.callback_query.data;
       const chatId = update.callback_query.from.id;
+      const messageId = update.callback_query.message.message_id;
 
-      await processCallback(callbackData, chatId);
+      await processCallback(callbackData, chatId, messageId);
 
       // Отправляем ответ на callback-запрос, чтобы убрать индикатор загрузки с кнопки
       await fetch(

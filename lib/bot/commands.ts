@@ -361,7 +361,12 @@ async function handleStats(chatId: number) {
   await sendMessage(chatId, message);
 }
 
-async function handleOrders(chatId: number, args: string[], page = 0) {
+async function handleOrders(
+  chatId: number,
+  args: string[],
+  page = 0,
+  messageId?: number,
+) {
   const supabase = createClient();
 
   // Получаем магазины администратора
@@ -397,7 +402,12 @@ async function handleOrders(chatId: number, args: string[], page = 0) {
   // Получаем заказы для текущей страницы
   const { data: orders, error } = await supabase
     .from('orders')
-    .select('*')
+    .select(
+      `
+      *,
+      shops:shop_id (name)
+    `,
+    )
     .in('shop_id', shopIds)
     .order('created_at', { ascending: false })
     .range(page * ORDERS_PER_PAGE, (page + 1) * ORDERS_PER_PAGE - 1);
@@ -418,14 +428,38 @@ async function handleOrders(chatId: number, args: string[], page = 0) {
     inline_keyboard: [],
   };
 
-  orders.forEach((order, index) => {
-    message += `<b>Заказ ${order.id}</b>\n`;
+  // Получаем товары для каждого заказа
+  for (const order of orders) {
+    message += `<b>Заказ #${order.id}</b>\n`;
+    message += `Магазин: ${order.shops.name}\n`;
     message += `Сумма: ${order.total_amount.toFixed(2)} ₽\n`;
     message += `Статус: ${getStatusEmoji(order.status)} ${getStatusText(order.status)}\n`;
     message += `Дата: ${new Date(order.created_at).toLocaleString()}\n`;
 
+    // Добавляем информацию о пользователе
+    if (order.user_id) {
+      message += `Telegram ID: ${order.user_id}\n`;
+    }
     if (order.telegram_username) {
       message += `Пользователь: @${order.telegram_username}\n`;
+    }
+
+    // Получаем товары заказа
+    const { data: orderItems } = await supabase
+      .from('orders_list')
+      .select(
+        `
+        *,
+        products:product_id (name)
+      `,
+      )
+      .eq('order_id', order.id);
+
+    if (orderItems && orderItems.length > 0) {
+      message += `\n<b>Товары:</b>\n`;
+      orderItems.forEach((item) => {
+        message += `- ${item.products.name} x ${item.amount} шт. (${(item.price * item.amount).toFixed(2)} ₽)\n`;
+      });
     }
 
     message += '\n';
@@ -437,7 +471,7 @@ async function handleOrders(chatId: number, args: string[], page = 0) {
         callback_data: `process_order_${order.id}`,
       },
     ]);
-  });
+  }
 
   // Добавляем кнопки навигации
   const navButtons = [];
@@ -458,9 +492,19 @@ async function handleOrders(chatId: number, args: string[], page = 0) {
     keyboard.inline_keyboard.push(navButtons);
   }
 
-  await sendMessageWithKeyboard(chatId, message, keyboard);
+  // Если есть messageId, редактируем существующее сообщение, иначе отправляем новое
+  if (messageId) {
+    await editMessageWithKeyboard(chatId, messageId, message, keyboard);
+  } else {
+    await sendMessageWithKeyboard(chatId, message, keyboard);
+  }
 }
-async function handleProcessOrder(chatId: number, orderId: string) {
+
+async function handleProcessOrder(
+  chatId: number,
+  orderId: string,
+  messageId?: number,
+) {
   const supabase = createClient();
 
   // Получаем информацию о заказе
@@ -480,6 +524,17 @@ async function handleProcessOrder(chatId: number, orderId: string) {
     return;
   }
 
+  // Получаем товары заказа
+  const { data: orderItems } = await supabase
+    .from('orders_list')
+    .select(
+      `
+      *,
+      products:product_id (name)
+    `,
+    )
+    .eq('order_id', orderId);
+
   // Формируем сообщение с информацией о заказе
   let message = `📋 <b>Заказ #${order.id}</b>\n\n`;
   message += `Магазин: ${order.shops.name}\n`;
@@ -487,11 +542,29 @@ async function handleProcessOrder(chatId: number, orderId: string) {
   message += `Статус: ${getStatusEmoji(order.status)} ${getStatusText(order.status)}\n`;
   message += `Дата: ${new Date(order.created_at).toLocaleString()}\n\n`;
 
+  // Добавляем информацию о пользователе
+  if (order.user_id) {
+    message += `Telegram ID: ${order.user_id}\n`;
+  }
+  if (order.telegram_username) {
+    message += `Пользователь: @${order.telegram_username}\n`;
+  }
+
   if (order.phone) message += `Телефон: ${order.phone}\n`;
   if (order.email) message += `Email: ${order.email}\n`;
   if (order.comment) message += `Комментарий: ${order.comment}\n\n`;
 
   message += `Адрес: ${formatAddress(order)}\n\n`;
+
+  // Добавляем информацию о товарах
+  if (orderItems && orderItems.length > 0) {
+    message += `<b>Товары:</b>\n`;
+    orderItems.forEach((item) => {
+      message += `- ${item.products.name} x ${item.amount} шт. (${(item.price * item.amount).toFixed(2)} ₽)\n`;
+    });
+    message += '\n';
+  }
+
   message += `Выберите действие:`;
 
   // Создаем клавиатуру с кнопками для изменения статуса
@@ -515,7 +588,52 @@ async function handleProcessOrder(chatId: number, orderId: string) {
     ],
   };
 
-  await sendMessageWithKeyboard(chatId, message, keyboard);
+  // Если есть messageId, редактируем существующее сообщение, иначе отправляем новое
+  if (messageId) {
+    await editMessageWithKeyboard(chatId, messageId, message, keyboard);
+  } else {
+    await sendMessageWithKeyboard(chatId, message, keyboard);
+  }
+}
+async function editMessageWithKeyboard(
+  chatId: number,
+  messageId: number,
+  text: string,
+  keyboard: any,
+) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+  if (!botToken) {
+    console.error('TELEGRAM_BOT_TOKEN не настроен');
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${botToken}/editMessageText`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+          text: text,
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+        }),
+      },
+    );
+
+    const data = await response.json();
+    if (!data.ok) {
+      console.error('Ошибка редактирования сообщения:', data);
+    }
+    return data;
+  } catch (error) {
+    console.error('Ошибка при редактировании сообщения в Telegram:', error);
+  }
 }
 
 // Функция для форматирования адреса
@@ -767,6 +885,7 @@ export async function sendOrderNotificationToAdmins(
 export async function processCallback(
   callbackData: string,
   chatId: number,
+  messageId: number,
 ): Promise<void> {
   // Парсим данные callback
   if (
@@ -779,17 +898,19 @@ export async function processCallback(
     const newStatus = parts[2];
 
     await updateOrderStatus(orderId, newStatus, chatId);
+    // После обновления статуса возвращаемся к деталям заказа
+    await handleProcessOrder(chatId, orderId, messageId);
   } else if (callbackData.startsWith('process_order_')) {
     // Обработка конкретного заказа
     const orderId = callbackData.replace('process_order_', '');
-    await handleProcessOrder(chatId, orderId);
+    await handleProcessOrder(chatId, orderId, messageId);
   } else if (callbackData.startsWith('orders_page_')) {
     // Пагинация заказов
     const page = parseInt(callbackData.replace('orders_page_', ''), 10);
-    await handleOrders(chatId, [], page);
+    await handleOrders(chatId, [], page, messageId);
   } else if (callbackData === 'orders_back') {
     // Возврат к списку заказов
-    await handleOrders(chatId, [], 0);
+    await handleOrders(chatId, [], 0, messageId);
   }
 }
 
