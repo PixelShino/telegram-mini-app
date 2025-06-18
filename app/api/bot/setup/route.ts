@@ -1,10 +1,6 @@
 // app/api/bot/setup/route.ts
-
-// Настраивает вебхук для бота - это URL, на который Telegram будет отправлять обновления (сообщения, нажатия кнопок и т.д.). Без этой настройки бот не будет получать сообщения от пользователей.
-
-// Регистрирует команды бота в Telegram - это позволяет пользователям видеть список доступных команд в интерфейсе Telegram (в меню команд или при вводе "/").
-
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,24 +34,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: data.description }, { status: 500 });
     }
 
-    // Устанавливаем команды бота
+    // Устанавливаем команды для администраторов
     const adminCommands = [
       { command: 'start', description: 'Начать работу с ботом' },
       { command: 'stats', description: 'Статистика магазина' },
-      { command: 'orders', description: 'Управление заказами' },
+      { command: 'ordersmgmt', description: 'Управление заказами' },
       { command: 'products', description: 'Список товаров' },
       { command: 'addproduct', description: 'Добавить товар' },
       { command: 'settings', description: 'Настройки магазина' },
       { command: 'help', description: 'Получить справку' },
     ];
 
+    // Устанавливаем команды для обычных пользователей
     const userCommands = [
       { command: 'start', description: 'Начать работу с ботом' },
-      { command: 'orders', description: 'Мои заказы' },
+      { command: 'myorders', description: 'Мои заказы' },
       { command: 'help', description: 'Получить справку' },
     ];
 
-    // Устанавливаем команды для обычных пользователей
+    // Устанавливаем команды для обычных пользователей (глобально)
     const userCommandsResponse = await fetch(
       `https://api.telegram.org/bot${token}/setMyCommands`,
       {
@@ -69,6 +66,37 @@ export async function GET(request: NextRequest) {
       },
     );
 
+    // Получаем список администраторов из базы данных
+    const supabase = createClient();
+    const { data: admins } = await supabase
+      .from('shop_admins')
+      .select('telegram_id')
+      .eq('role', 'admin');
+
+    // Устанавливаем команды для каждого администратора
+    const adminCommandsResponses = [];
+    if (admins && admins.length > 0) {
+      for (const admin of admins) {
+        const response = await fetch(
+          `https://api.telegram.org/bot${token}/setMyCommands`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              commands: adminCommands,
+              scope: {
+                type: 'chat',
+                chat_id: admin.telegram_id,
+              },
+            }),
+          },
+        );
+        adminCommandsResponses.push(await response.json());
+      }
+    }
+
     // Получаем информацию о боте
     const botInfoResponse = await fetch(
       `https://api.telegram.org/bot${token}/getMe`,
@@ -77,7 +105,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       webhook: data,
-      commands: await userCommandsResponse.json(),
+      userCommands: await userCommandsResponse.json(),
+      adminCommands: adminCommandsResponses,
       webhookUrl,
       botInfo: botInfo.result,
     });

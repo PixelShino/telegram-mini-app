@@ -72,6 +72,12 @@ export async function processCommand(
       return admin
         ? await handleOrders(chatId, args)
         : await handleUserOrders(chatId, user.id);
+    case '/myorders':
+      return await handleUserOrders(chatId, user.id);
+    case '/ordersmgmt':
+      return admin
+        ? await handleOrders(chatId, args)
+        : await sendMessage(chatId, 'У вас нет доступа к этой команде.');
     case '/products':
       return admin
         ? await handleProducts(chatId, args)
@@ -108,6 +114,7 @@ async function handleStart(chatId: number, user: any, isAdmin: boolean) {
   } catch (error) {
     console.error('Ошибка при сохранении пользователя:', error);
   }
+
   if (isAdmin) {
     const supabase = createClient();
 
@@ -130,9 +137,23 @@ async function handleStart(chatId: number, user: any, isAdmin: boolean) {
       message += `${index + 1}. ${shop.shops.name}\n`;
     });
 
-    message += '\nИспользуйте /help для просмотра доступных команд.';
+    message += '\nВыберите действие:';
 
-    await sendMessage(chatId, message);
+    // Создаем клавиатуру с кнопками команд для админа
+    const keyboard = {
+      keyboard: [
+        [{ text: '/stats - Статистика' }, { text: '/ordersmgmt - Заказы' }],
+        [
+          { text: '/products - Товары' },
+          { text: '/addproduct - Добавить товар' },
+        ],
+        [{ text: '/settings - Настройки' }, { text: '/help - Справка' }],
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: false,
+    };
+
+    await sendMessageWithKeyboard(chatId, message, keyboard);
   } else {
     // Для обычных пользователей
     const shop = await getUserShop(user.id);
@@ -143,6 +164,16 @@ async function handleStart(chatId: number, user: any, isAdmin: boolean) {
         'Добро пожаловать! К сожалению, магазин временно недоступен.',
       );
     }
+
+    // Создаем клавиатуру с кнопками для обычного пользователя
+    const keyboard = {
+      keyboard: [
+        [{ text: '/myorders - Мои заказы' }, { text: '/help - Справка' }],
+        [{ text: 'Перейти в магазин' }],
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: false,
+    };
 
     // Создаем кнопку для перехода в магазин
     const inlineKeyboard = {
@@ -161,10 +192,18 @@ async function handleStart(chatId: number, user: any, isAdmin: boolean) {
     await sendMessageWithKeyboard(
       chatId,
       `Добро пожаловать в магазин "${shop.name}"!\n\nДля перехода к покупкам нажмите кнопку ниже.`,
+      keyboard,
+    );
+
+    // Отправляем также inline-кнопку для перехода в магазин
+    await sendMessageWithKeyboard(
+      chatId,
+      'Или используйте эту кнопку:',
       inlineKeyboard,
     );
   }
 }
+
 // Обработчик для просмотра заказов пользователя
 async function handleUserOrders(chatId: number, telegramId: number) {
   const supabase = createClient();
@@ -307,7 +346,7 @@ async function handleStats(chatId: number) {
   let message = '📊 <b>Статистика магазина</b>\n\n';
   message += `📦 Товаров: ${products?.length || 0}\n`;
   message += `🛒 Заказов: ${orders?.length || 0}\n`;
-  message += `💰 Выручка: $${totalRevenue.toFixed(2)}\n\n`;
+  message += `💰 Выручка: ${totalRevenue.toFixed(2)} ₽\n\n`;
 
   // Статистика по статусам заказов
   const pendingOrders =
@@ -356,8 +395,8 @@ async function handleOrders(chatId: number, args: string[]) {
   let message = '🛒 <b>Последние заказы</b>\n\n';
 
   orders.forEach((order, index) => {
-    message += `<b>Заказ #${order.id}</b>\n`;
-    message += `Сумма: $${order.total_amount.toFixed(2)}\n`;
+    message += `<b>Заказ ${order.id}</b>\n`;
+    message += `Сумма: ${order.total_amount.toFixed(2)} ₽\n`;
     message += `Статус: ${getStatusEmoji(order.status)} ${getStatusText(order.status)}\n`;
     message += `Дата: ${new Date(order.created_at).toLocaleString()}\n`;
 
@@ -414,7 +453,7 @@ async function handleProducts(chatId: number, args: string[]) {
 
   products.forEach((product, index) => {
     message += `<b>${index + 1}. ${product.name}</b>\n`;
-    message += `Цена: $${product.price.toFixed(2)}\n`;
+    message += `Цена: ${product.price.toFixed(2)} ₽\n`;
     message += `Статус: ${product.status === 'active' ? '✅ Активен' : '❌ Неактивен'}\n\n`;
   });
 
@@ -460,7 +499,7 @@ async function handleHelp(chatId: number, isAdmin: boolean) {
     helpMessage +=
       '/start - Начало работы\n' +
       '/stats - Статистика магазина\n' +
-      '/orders - Управление заказами\n' +
+      '/ordersmgmt - Управление заказами\n' +
       '/products - Список товаров\n' +
       '/addproduct - Добавить товар\n' +
       '/settings - Настройки магазина\n' +
@@ -470,7 +509,7 @@ async function handleHelp(chatId: number, isAdmin: boolean) {
   } else {
     helpMessage +=
       '/start - Начало работы\n' +
-      '/orders - Ваши заказы\n' +
+      '/myorders - Ваши заказы\n' +
       '/help - Эта справка';
   }
 
