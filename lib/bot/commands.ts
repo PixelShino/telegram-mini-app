@@ -369,7 +369,7 @@ async function handleOrders(chatId: number, args: string[]) {
   });
 
   message +=
-    'Для управления заказом используйте команду:\n/orders <id_заказа> <действие>\n';
+    'Для управления заказом используйте команду:\n/orders ID_заказа действие\n';
   message += 'Действия: confirm, complete, cancel';
 
   await sendMessage(chatId, message);
@@ -419,7 +419,7 @@ async function handleProducts(chatId: number, args: string[]) {
   });
 
   message +=
-    'Для управления товаром используйте команду:\n/products <id_товара> <действие>\n';
+    'Для управления товаром используйте команду:\n/products ID_товара действие\n';
   message += 'Действия: edit, delete, activate, deactivate';
 
   await sendMessage(chatId, message);
@@ -445,9 +445,9 @@ async function handleSettings(chatId: number, args: string[]) {
     chatId,
     '⚙️ <b>Настройки магазина</b>\n\n' +
       'Для изменения настроек используйте команды:\n\n' +
-      '/settings name <новое_название> - изменить название\n' +
-      '/settings description <новое_описание> - изменить описание\n' +
-      '/settings welcome <новое_приветствие> - изменить приветствие\n\n' +
+      '/settings name НОВОЕ_НАЗВАНИЕ - изменить название\n' +
+      '/settings description НОВОЕ_ОПИСАНИЕ - изменить описание\n' +
+      '/settings welcome НОВОЕ_ПРИВЕТСТВИЕ - изменить приветствие\n\n' +
       'Эта функция будет доступна в ближайшем обновлении.',
   );
 }
@@ -466,7 +466,7 @@ async function handleHelp(chatId: number, isAdmin: boolean) {
       '/settings - Настройки магазина\n' +
       '/help - Эта справка\n\n' +
       'Для получения подробной информации о команде, используйте:\n' +
-      '/help <команда>';
+      '/help КОМАНДА';
   } else {
     helpMessage +=
       '/start - Начало работы\n' +
