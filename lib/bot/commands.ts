@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 
+const ORDERS_PER_PAGE = 5;
 // Проверка роли пользователя
 async function isAdmin(telegramId: number): Promise<boolean> {
   const supabase = createClient();
@@ -360,7 +361,7 @@ async function handleStats(chatId: number) {
   await sendMessage(chatId, message);
 }
 
-async function handleOrders(chatId: number, args: string[]) {
+async function handleOrders(chatId: number, args: string[], page = 0) {
   const supabase = createClient();
 
   // Получаем магазины администратора
@@ -375,13 +376,31 @@ async function handleOrders(chatId: number, args: string[]) {
 
   const shopIds = shops.map((shop) => shop.shop_id);
 
-  // Получаем последние заказы
+  // Получаем общее количество заказов для пагинации
+  const { count, error: countError } = await supabase
+    .from('orders')
+    .select('*', { count: 'exact', head: true })
+    .in('shop_id', shopIds);
+
+  if (countError) {
+    console.error('Ошибка получения количества заказов:', countError);
+    return await sendMessage(chatId, 'Произошла ошибка при получении заказов.');
+  }
+
+  const totalOrders = count || 0;
+  const totalPages = Math.ceil(totalOrders / ORDERS_PER_PAGE);
+
+  // Проверяем, что страница в допустимом диапазоне
+  if (page < 0) page = 0;
+  if (page >= totalPages && totalPages > 0) page = totalPages - 1;
+
+  // Получаем заказы для текущей страницы
   const { data: orders, error } = await supabase
     .from('orders')
     .select('*')
     .in('shop_id', shopIds)
     .order('created_at', { ascending: false })
-    .limit(5);
+    .range(page * ORDERS_PER_PAGE, (page + 1) * ORDERS_PER_PAGE - 1);
 
   if (error) {
     console.error('Ошибка получения заказов:', error);
@@ -392,7 +411,12 @@ async function handleOrders(chatId: number, args: string[]) {
     return await sendMessage(chatId, 'У вас пока нет заказов.');
   }
 
-  let message = '🛒 <b>Последние заказы</b>\n\n';
+  let message = `🛒 <b>Заказы (страница ${page + 1} из ${totalPages})</b>\n\n`;
+
+  // Создаем клавиатуру с кнопками для каждого заказа и навигации
+  const keyboard: any = {
+    inline_keyboard: [],
+  };
 
   orders.forEach((order, index) => {
     message += `<b>Заказ ${order.id}</b>\n`;
@@ -405,13 +429,112 @@ async function handleOrders(chatId: number, args: string[]) {
     }
 
     message += '\n';
+
+    // Добавляем кнопку "Обработать" для каждого заказа
+    keyboard.inline_keyboard.push([
+      {
+        text: `Обработать заказ #${order.id}`,
+        callback_data: `process_order_${order.id}`,
+      },
+    ]);
   });
 
-  message +=
-    'Для управления заказом используйте команду:\n/orders ID_заказа действие\n';
-  message += 'Действия: confirm, complete, cancel';
+  // Добавляем кнопки навигации
+  const navButtons = [];
+  if (page > 0) {
+    navButtons.push({
+      text: '◀️ Назад',
+      callback_data: `orders_page_${page - 1}`,
+    });
+  }
+  if (page < totalPages - 1) {
+    navButtons.push({
+      text: 'Вперёд ▶️',
+      callback_data: `orders_page_${page + 1}`,
+    });
+  }
 
-  await sendMessage(chatId, message);
+  if (navButtons.length > 0) {
+    keyboard.inline_keyboard.push(navButtons);
+  }
+
+  await sendMessageWithKeyboard(chatId, message, keyboard);
+}
+async function handleProcessOrder(chatId: number, orderId: string) {
+  const supabase = createClient();
+
+  // Получаем информацию о заказе
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select(
+      `
+      *,
+      shops:shop_id (name)
+    `,
+    )
+    .eq('id', orderId)
+    .single();
+
+  if (error || !order) {
+    await sendMessage(chatId, `❌ Ошибка: заказ #${orderId} не найден.`);
+    return;
+  }
+
+  // Формируем сообщение с информацией о заказе
+  let message = `📋 <b>Заказ #${order.id}</b>\n\n`;
+  message += `Магазин: ${order.shops.name}\n`;
+  message += `Сумма: ${order.total_amount.toFixed(2)} ₽\n`;
+  message += `Статус: ${getStatusEmoji(order.status)} ${getStatusText(order.status)}\n`;
+  message += `Дата: ${new Date(order.created_at).toLocaleString()}\n\n`;
+
+  if (order.phone) message += `Телефон: ${order.phone}\n`;
+  if (order.email) message += `Email: ${order.email}\n`;
+  if (order.comment) message += `Комментарий: ${order.comment}\n\n`;
+
+  message += `Адрес: ${formatAddress(order)}\n\n`;
+  message += `Выберите действие:`;
+
+  // Создаем клавиатуру с кнопками для изменения статуса
+  const keyboard = {
+    inline_keyboard: [
+      [
+        {
+          text: '⏳ Ожидает обработки',
+          callback_data: `order_${order.id}_pending`,
+        },
+        {
+          text: '🔄 Принят в работу',
+          callback_data: `order_${order.id}_processing`,
+        },
+      ],
+      [
+        { text: '✅ Выполнен', callback_data: `order_${order.id}_completed` },
+        { text: '❌ Отменен', callback_data: `order_${order.id}_cancelled` },
+      ],
+      [{ text: '◀️ Назад к заказам', callback_data: 'orders_back' }],
+    ],
+  };
+
+  await sendMessageWithKeyboard(chatId, message, keyboard);
+}
+
+// Функция для форматирования адреса
+function formatAddress(order: any): string {
+  const parts = [];
+
+  if (order.country) parts.push(order.country);
+  if (order.city) parts.push(order.city);
+  if (order.street) parts.push(order.street);
+  if (order.house_number) parts.push(`д. ${order.house_number}`);
+
+  if (!order.is_private_house) {
+    if (order.apartment) parts.push(`кв. ${order.apartment}`);
+    if (order.entrance) parts.push(`подъезд ${order.entrance}`);
+    if (order.floor) parts.push(`этаж ${order.floor}`);
+    if (order.intercom_code) parts.push(`домофон ${order.intercom_code}`);
+  }
+
+  return parts.length > 0 ? parts.join(', ') : 'Не указан';
 }
 
 async function handleProducts(chatId: number, args: string[]) {
@@ -463,7 +586,7 @@ async function handleProducts(chatId: number, args: string[]) {
 
   await sendMessage(chatId, message);
 }
-
+// TODO: Сделать добавление товара через бота
 async function handleAddProduct(chatId: number) {
   // Здесь будет логика добавления товара через бота
   // Это требует создания состояния диалога и пошагового процесса
@@ -478,7 +601,7 @@ async function handleAddProduct(chatId: number) {
       'Эта функция будет доступна в ближайшем обновлении.',
   );
 }
-
+// TODO: Сделать настройку магазина через бота
 async function handleSettings(chatId: number, args: string[]) {
   await sendMessage(
     chatId,
@@ -646,14 +769,27 @@ export async function processCallback(
   chatId: number,
 ): Promise<void> {
   // Парсим данные callback
-  const parts = callbackData.split('_');
-
-  if (parts[0] === 'order' && parts.length === 3) {
+  if (
+    callbackData.startsWith('order_') &&
+    callbackData.split('_').length === 3
+  ) {
+    // Обработка изменения статуса заказа
+    const parts = callbackData.split('_');
     const orderId = parts[1];
     const newStatus = parts[2];
 
-    // Обновляем статус заказа
     await updateOrderStatus(orderId, newStatus, chatId);
+  } else if (callbackData.startsWith('process_order_')) {
+    // Обработка конкретного заказа
+    const orderId = callbackData.replace('process_order_', '');
+    await handleProcessOrder(chatId, orderId);
+  } else if (callbackData.startsWith('orders_page_')) {
+    // Пагинация заказов
+    const page = parseInt(callbackData.replace('orders_page_', ''), 10);
+    await handleOrders(chatId, [], page);
+  } else if (callbackData === 'orders_back') {
+    // Возврат к списку заказов
+    await handleOrders(chatId, [], 0);
   }
 }
 
