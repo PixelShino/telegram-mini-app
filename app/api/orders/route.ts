@@ -1,6 +1,7 @@
 // app/api/orders/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { sendOrderNotificationToAdmins } from '@/lib/bot/commands';
 
 export async function POST(request: NextRequest) {
   try {
@@ -116,6 +117,16 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
+
+    // После успешного создания заказа отправляем уведомление администраторам
+    const customerInfoStr =
+      `${customerInfo?.name || ''} ${customerInfo?.phone || ''}`.trim();
+    await sendOrderNotificationToAdmins(
+      order.id,
+      shop_id,
+      Number(total_price),
+      customerInfoStr,
+    );
 
     return NextResponse.json(order);
   } catch (error) {

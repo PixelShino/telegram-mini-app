@@ -1,6 +1,10 @@
 // app/api/bot/setup/route.ts
+
+// Настраивает вебхук для бота - это URL, на который Telegram будет отправлять обновления (сообщения, нажатия кнопок и т.д.). Без этой настройки бот не будет получать сообщения от пользователей.
+
+// Регистрирует команды бота в Telegram - это позволяет пользователям видеть список доступных команд в интерфейсе Telegram (в меню команд или при вводе "/").
+
 import { NextRequest, NextResponse } from 'next/server';
-import { createBot } from '@/lib/bot';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +14,7 @@ export async function GET(request: NextRequest) {
     }
 
     // URL вебхука
-    const webhookUrl = `${request.nextUrl.origin}/api/bot/webhook`;
+    const webhookUrl = `${request.nextUrl.origin}/api/bot/webhook/${token}`;
     console.log('Setting webhook URL:', webhookUrl);
 
     // Настраиваем вебхук
@@ -35,7 +39,24 @@ export async function GET(request: NextRequest) {
     }
 
     // Устанавливаем команды бота
-    const commandsResponse = await fetch(
+    const adminCommands = [
+      { command: 'start', description: 'Начать работу с ботом' },
+      { command: 'stats', description: 'Статистика магазина' },
+      { command: 'orders', description: 'Управление заказами' },
+      { command: 'products', description: 'Список товаров' },
+      { command: 'addproduct', description: 'Добавить товар' },
+      { command: 'settings', description: 'Настройки магазина' },
+      { command: 'help', description: 'Получить справку' },
+    ];
+
+    const userCommands = [
+      { command: 'start', description: 'Начать работу с ботом' },
+      { command: 'orders', description: 'Мои заказы' },
+      { command: 'help', description: 'Получить справку' },
+    ];
+
+    // Устанавливаем команды для обычных пользователей
+    const userCommandsResponse = await fetch(
       `https://api.telegram.org/bot${token}/setMyCommands`,
       {
         method: 'POST',
@@ -43,22 +64,22 @@ export async function GET(request: NextRequest) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          commands: [
-            { command: 'start', description: 'Начать работу с ботом' },
-            { command: 'help', description: 'Получить справку' },
-            { command: 'profile', description: 'Мой профиль' },
-            { command: 'orders', description: 'Мои заказы' },
-          ],
+          commands: userCommands,
         }),
       },
     );
 
-    const commandsData = await commandsResponse.json();
+    // Получаем информацию о боте
+    const botInfoResponse = await fetch(
+      `https://api.telegram.org/bot${token}/getMe`,
+    );
+    const botInfo = await botInfoResponse.json();
 
     return NextResponse.json({
       webhook: data,
-      commands: commandsData,
+      commands: await userCommandsResponse.json(),
       webhookUrl,
+      botInfo: botInfo.result,
     });
   } catch (error: any) {
     console.error('Ошибка настройки вебхука:', error);
