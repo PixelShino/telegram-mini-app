@@ -250,8 +250,51 @@ export async function sendOrderStatusNotification(
   shop_name: string,
   status: string,
 ): Promise<void> {
+  const supabase = createClient();
   const statusText = getStatusText(status);
-  const message = `Ваш заказ №${order_id} в магазине "${shop_name}" ${statusText}`;
+
+  // Получаем информацию о заказе
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', order_id)
+    .single();
+
+  if (orderError || !order) {
+    console.error('Ошибка при получении информации о заказе:', orderError);
+    return;
+  }
+
+  // Получаем товары заказа
+  const { data: orderItems, error: itemsError } = await supabase
+    .from('orders_list')
+    .select(
+      `
+      *,
+      products:product_id (name)
+    `,
+    )
+    .eq('order_id', order_id);
+
+  if (itemsError) {
+    console.error('Ошибка при получении товаров заказа:', itemsError);
+    return;
+  }
+
+  // Формируем сообщение с информацией о заказе
+  let message = `🔔 <b>Ваш заказ #${order_id}</b>\n\n`;
+  message += `Статус: ${getStatusEmoji(status)} ${statusText}\n`;
+  message += `Магазин: ${shop_name}\n`;
+  message += `Сумма: ${order.total_amount.toFixed(2)} ₽\n`;
+  message += `Дата: ${new Date(order.created_at).toLocaleString()}\n\n`;
+
+  // Добавляем информацию о товарах
+  if (orderItems && orderItems.length > 0) {
+    message += `<b>Товары:</b>\n`;
+    orderItems.forEach((item) => {
+      message += `- ${item.products.name} x ${item.amount} шт. (${(item.price * item.amount).toFixed(2)} ₽)\n`;
+    });
+  }
 
   await sendMessage(telegram_id, message);
 }
