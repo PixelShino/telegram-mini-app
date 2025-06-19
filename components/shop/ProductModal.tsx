@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import useEmblaCarousel from 'embla-carousel-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -10,7 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Minus, ShoppingCart } from 'lucide-react';
+import {
+  Plus,
+  Minus,
+  ShoppingCart,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import type { Product } from '@/types/product';
 
 interface ProductModalProps {
@@ -32,6 +39,19 @@ export default function ProductModal({
 }: ProductModalProps) {
   const [quantity, setQuantity] = useState(cartQuantity > 0 ? cartQuantity : 1);
   const [lastClickTime, setLastClickTime] = useState(0);
+
+  // Настройка слайдера
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true });
+
+  // Функции для навигации по слайдеру
+  const scrollPrev = useCallback(() => {
+    if (emblaApi) emblaApi.scrollPrev();
+  }, [emblaApi]);
+
+  const scrollNext = useCallback(() => {
+    if (emblaApi) emblaApi.scrollNext();
+  }, [emblaApi]);
+
   useEffect(() => {
     if (product && cartQuantity > 0) {
       setQuantity(cartQuantity);
@@ -41,6 +61,12 @@ export default function ProductModal({
   }, [product, cartQuantity]);
 
   if (!product) return null;
+
+  // Получаем изображения товара
+  const images =
+    product.images && product.images.length > 0
+      ? product.images
+      : [product.imageUrl || '/placeholder.svg?height=400&width=400'];
 
   const handleAddToCart = () => {
     // Проверяем, можно ли добавить товар в указанном количестве
@@ -94,13 +120,46 @@ export default function ProductModal({
         </DialogHeader>
 
         <div className='space-y-4'>
-          {/* Изображение товара */}
-          <div className='overflow-hidden rounded-lg aspect-square bg-muted'>
-            <img
-              src={product.imageUrl || '/placeholder.svg?height=400&width=400'}
-              alt={product.name}
-              className='object-cover w-full h-full'
-            />
+          {/* Слайдер изображений товара */}
+          <div className='relative overflow-hidden rounded-lg aspect-square bg-muted'>
+            <div className='overflow-hidden embla' ref={emblaRef}>
+              <div className='flex embla__container'>
+                {images.map((image, index) => (
+                  <div
+                    key={index}
+                    className='embla__slide flex-[0_0_100%] min-w-0'
+                  >
+                    <img
+                      src={image}
+                      alt={`${product.name} - изображение ${index + 1}`}
+                      className='object-cover w-full h-full'
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Кнопки навигации слайдера - показываем только если больше 1 изображения */}
+            {images.length > 1 && (
+              <>
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  className='absolute left-0 z-10 -translate-y-1/2 top-1/2 bg-white/50 hover:bg-white/80'
+                  onClick={scrollPrev}
+                >
+                  <ChevronLeft className='w-6 h-6' />
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  className='absolute right-0 z-10 -translate-y-1/2 top-1/2 bg-white/50 hover:bg-white/80'
+                  onClick={scrollNext}
+                >
+                  <ChevronRight className='w-6 h-6' />
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Информация о товаре */}
