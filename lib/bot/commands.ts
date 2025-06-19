@@ -1592,7 +1592,105 @@ export async function processDialogState(
         .delete()
         .eq('telegram_id', chatId);
       break;
+    case 'editing_product_name':
+      // Редактирование названия товара
+      const { error: nameError } = await supabase
+        .from('products')
+        .update({ name: text })
+        .eq('id', dialogState.data.product_id);
 
+      if (nameError) {
+        await sendMessage(
+          chatId,
+          `❌ Ошибка при обновлении названия товара: ${nameError.message}`,
+        );
+      } else {
+        await sendMessage(
+          chatId,
+          `✅ Название товара изменено с "${dialogState.data.current_name}" на "${text}"!`,
+        );
+        await handleEditProduct(chatId, dialogState.data.product_id);
+      }
+
+      // Очищаем состояние диалога
+      await supabase
+        .from('bot_dialog_states')
+        .delete()
+        .eq('telegram_id', chatId);
+      break;
+
+    case 'editing_product_price':
+      // Редактирование цены товара
+      const price = parseFloat(text);
+
+      if (isNaN(price) || price <= 0) {
+        await sendMessage(
+          chatId,
+          `❌ Ошибка: введите корректную цену (положительное число).`,
+        );
+        return;
+      }
+
+      const { error: priceError } = await supabase
+        .from('products')
+        .update({ price })
+        .eq('id', dialogState.data.product_id);
+
+      if (priceError) {
+        await sendMessage(
+          chatId,
+          `❌ Ошибка при обновлении цены товара: ${priceError.message}`,
+        );
+      } else {
+        await sendMessage(
+          chatId,
+          `✅ Цена товара "${dialogState.data.product_name}" изменена на ${price.toFixed(2)} ₽!`,
+        );
+        await handleEditProduct(chatId, dialogState.data.product_id);
+      }
+
+      // Очищаем состояние диалога
+      await supabase
+        .from('bot_dialog_states')
+        .delete()
+        .eq('telegram_id', chatId);
+      break;
+    case 'editing_product_amount':
+      // Редактирование остатка товара
+      const amount = parseInt(text);
+
+      if (isNaN(amount) || amount < 0) {
+        await sendMessage(
+          chatId,
+          `❌ Ошибка: введите корректное количество (целое неотрицательное число).`,
+        );
+        return;
+      }
+
+      const { error: amountError } = await supabase
+        .from('products')
+        .update({ amount })
+        .eq('id', dialogState.data.product_id);
+
+      if (amountError) {
+        await sendMessage(
+          chatId,
+          `❌ Ошибка при обновлении остатка товара: ${amountError.message}`,
+        );
+      } else {
+        await sendMessage(
+          chatId,
+          `✅ Остаток товара "${dialogState.data.product_name}" изменен на ${amount} шт.!`,
+        );
+        await handleEditProduct(chatId, dialogState.data.product_id);
+      }
+
+      // Очищаем состояние диалога
+      await supabase
+        .from('bot_dialog_states')
+        .delete()
+        .eq('telegram_id', chatId);
+      break;
     default:
       // Неизвестное состояние диалога
       await sendMessage(
@@ -1606,6 +1704,236 @@ export async function processDialogState(
         .delete()
         .eq('telegram_id', chatId);
   }
+}
+// Функция для редактирования названия товара
+async function handleEditProductName(chatId: number, productId: string) {
+  const supabase = createClient();
+
+  // Получаем информацию о товаре
+  const { data: product, error } = await supabase
+    .from('products')
+    .select('name')
+    .eq('id', productId)
+    .single();
+
+  if (error || !product) {
+    await sendMessage(chatId, `❌ Ошибка: товар #${productId} не найден.`);
+    return;
+  }
+
+  // Сохраняем состояние диалога
+  await supabase.from('bot_dialog_states').upsert({
+    telegram_id: chatId,
+    state: 'editing_product_name',
+    data: { product_id: productId, current_name: product.name },
+    updated_at: new Date().toISOString(),
+  });
+
+  // Отправляем запрос на ввод нового названия товара
+  await sendMessage(
+    chatId,
+    `Редактирование названия товара\n\n` +
+      `Текущее название: <b>${product.name}</b>\n\n` +
+      `Введите новое название товара:`,
+  );
+}
+
+// Функция для редактирования цены товара
+async function handleEditProductPrice(chatId: number, productId: string) {
+  const supabase = createClient();
+
+  // Получаем информацию о товаре
+  const { data: product, error } = await supabase
+    .from('products')
+    .select('name, price')
+    .eq('id', productId)
+    .single();
+
+  if (error || !product) {
+    await sendMessage(chatId, `❌ Ошибка: товар #${productId} не найден.`);
+    return;
+  }
+
+  // Сохраняем состояние диалога
+  await supabase.from('bot_dialog_states').upsert({
+    telegram_id: chatId,
+    state: 'editing_product_price',
+    data: { product_id: productId, product_name: product.name },
+    updated_at: new Date().toISOString(),
+  });
+
+  // Отправляем запрос на ввод новой цены товара
+  await sendMessage(
+    chatId,
+    `Редактирование цены товара <b>${product.name}</b>\n\n` +
+      `Текущая цена: ${product.price.toFixed(2)} ₽\n\n` +
+      `Введите новую цену товара (только число):`,
+  );
+}
+
+// Функция для редактирования остатка товара
+async function handleEditProductAmount(chatId: number, productId: string) {
+  const supabase = createClient();
+
+  // Получаем информацию о товаре
+  const { data: product, error } = await supabase
+    .from('products')
+    .select('name, amount')
+    .eq('id', productId)
+    .single();
+
+  if (error || !product) {
+    await sendMessage(chatId, `❌ Ошибка: товар #${productId} не найден.`);
+    return;
+  }
+
+  // Сохраняем состояние диалога
+  await supabase.from('bot_dialog_states').upsert({
+    telegram_id: chatId,
+    state: 'editing_product_amount',
+    data: { product_id: productId, product_name: product.name },
+    updated_at: new Date().toISOString(),
+  });
+
+  // Отправляем запрос на ввод нового остатка товара
+  await sendMessage(
+    chatId,
+    `Редактирование остатка товара <b>${product.name}</b>\n\n` +
+      `Текущий остаток: ${product.amount || 0} шт.\n\n` +
+      `Введите новый остаток товара (только целое число):`,
+  );
+}
+
+// Функция для редактирования категории товара
+async function handleEditProductCategory(chatId: number, productId: string) {
+  const supabase = createClient();
+
+  // Получаем информацию о товаре
+  const { data: product, error: productError } = await supabase
+    .from('products')
+    .select('name, category_id')
+    .eq('id', productId)
+    .single();
+
+  if (productError || !product) {
+    await sendMessage(chatId, `❌ Ошибка: товар #${productId} не найден.`);
+    return;
+  }
+
+  // Получаем магазины администратора
+  const { data: shops } = await supabase
+    .from('shop_admins')
+    .select('shop_id')
+    .eq('telegram_id', chatId);
+
+  if (!shops || shops.length === 0) {
+    await sendMessage(chatId, 'У вас нет магазинов.');
+    return;
+  }
+
+  const shopIds = shops.map((shop) => shop.shop_id);
+
+  // Получаем категории
+  const { data: categories, error: categoriesError } = await supabase
+    .from('categories')
+    .select('*')
+    .in('shop_id', shopIds)
+    .order('name', { ascending: true });
+
+  if (categoriesError) {
+    await sendMessage(
+      chatId,
+      `❌ Ошибка при получении категорий: ${categoriesError.message}`,
+    );
+    return;
+  }
+
+  if (!categories || categories.length === 0) {
+    await sendMessage(
+      chatId,
+      `❌ У вас пока нет категорий. Сначала создайте категории через меню "Управление категориями".`,
+    );
+    return;
+  }
+
+  // Формируем сообщение с выбором категории
+  let message = `🏷️ <b>Выберите категорию для товара "${product.name}"</b>\n\n`;
+  message += `Текущая категория: ${product.category_id ? 'Установлена' : 'Не установлена'}\n\n`;
+  message += `Доступные категории:`;
+
+  // Создаем клавиатуру с кнопками для выбора категории
+  const keyboard: {
+    inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
+  } = {
+    inline_keyboard: [],
+  };
+
+  // Добавляем кнопку для удаления категории
+  keyboard.inline_keyboard.push([
+    {
+      text: '❌ Без категории',
+      callback_data: `set_product_category_${productId}_null`,
+    },
+  ]);
+
+  // Добавляем кнопки для каждой категории
+  categories.forEach((category) => {
+    keyboard.inline_keyboard.push([
+      {
+        text: category.name,
+        callback_data: `set_product_category_${productId}_${category.id}`,
+      },
+    ]);
+  });
+
+  // Добавляем кнопку "Назад"
+  keyboard.inline_keyboard.push([
+    { text: '◀️ Назад', callback_data: `edit_product_${productId}` },
+  ]);
+
+  // Отправляем сообщение с клавиатурой
+  await sendMessageWithKeyboard(chatId, message, keyboard);
+}
+
+// Функция для редактирования изображений товара
+async function handleEditProductImages(chatId: number, productId: string) {
+  const supabase = createClient();
+
+  // Получаем информацию о товаре
+  const { data: product, error } = await supabase
+    .from('products')
+    .select('name, images')
+    .eq('id', productId)
+    .single();
+
+  if (error || !product) {
+    await sendMessage(chatId, `❌ Ошибка: товар #${productId} не найден.`);
+    return;
+  }
+
+  // Формируем сообщение с информацией об изображениях
+  let message = `🖼️ <b>Изображения товара "${product.name}"</b>\n\n`;
+
+  if (!product.images || product.images.length === 0) {
+    message += `У товара пока нет изображений.\n\n`;
+  } else {
+    message += `У товара ${product.images.length} изображений.\n\n`;
+  }
+
+  message += `Для управления изображениями используйте веб-интерфейс администратора.\n`;
+  message += `В Telegram боте пока нет возможности загружать и удалять изображения напрямую.`;
+
+  // Создаем клавиатуру с кнопкой "Назад"
+  const keyboard: {
+    inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
+  } = {
+    inline_keyboard: [
+      [{ text: '◀️ Назад', callback_data: `edit_product_${productId}` }],
+    ],
+  };
+
+  // Отправляем сообщение с клавиатурой
+  await sendMessageWithKeyboard(chatId, message, keyboard);
 }
 
 // Функция для управления категориями
@@ -1651,7 +1979,9 @@ async function handleManageCategories(chatId: number, messageId?: number) {
   }
 
   // Создаем клавиатуру с кнопками для управления категориями
-  const keyboard = {
+  const keyboard: {
+    inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
+  } = {
     inline_keyboard: [
       [{ text: '➕ Добавить категорию', callback_data: 'add_category' }],
     ],
@@ -1957,6 +2287,47 @@ export async function processCallback(
     // Редактирование описания товара
     const productId = callbackData.replace('edit_product_description_', '');
     await handleEditProductDescription(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_name_')) {
+    // Редактирование названия товара
+    const productId = callbackData.replace('edit_product_name_', '');
+    await handleEditProductName(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_price_')) {
+    // Редактирование цены товара
+    const productId = callbackData.replace('edit_product_price_', '');
+    await handleEditProductPrice(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_amount_')) {
+    // Редактирование остатка товара
+    const productId = callbackData.replace('edit_product_amount_', '');
+    await handleEditProductAmount(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_images_')) {
+    // Редактирование изображений товара
+    const productId = callbackData.replace('edit_product_images_', '');
+    await handleEditProductImages(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_category_')) {
+    // Редактирование категории товара
+    const productId = callbackData.replace('edit_product_category_', '');
+    await handleEditProductCategory(chatId, productId);
+  } else if (callbackData.startsWith('set_product_category_')) {
+    // Установка категории товара
+    const parts = callbackData.replace('set_product_category_', '').split('_');
+    const productId = parts[0];
+    const categoryId = parts[1] === 'null' ? null : parts[1];
+
+    // Обновляем категорию товара
+    const { error: updateError } = await supabase
+      .from('products')
+      .update({ category_id: categoryId })
+      .eq('id', productId);
+
+    if (updateError) {
+      await sendMessage(
+        chatId,
+        `❌ Ошибка при обновлении категории товара: ${updateError.message}`,
+      );
+    } else {
+      await sendMessage(chatId, `✅ Категория товара успешно обновлена!`);
+      await handleEditProduct(chatId, productId, messageId);
+    }
   }
 }
 
