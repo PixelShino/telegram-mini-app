@@ -236,12 +236,35 @@ export async function processMessage(text: string, chatId: number, user: any) {
     );
   }
 }
-
+const USER_ORDERS_PER_PAGE = 3;
 // Обработчик для просмотра заказов пользователя
-async function handleUserOrders(chatId: number, telegramId: number) {
+async function handleUserOrders(
+  chatId: number,
+  telegramId: number,
+  page = 0,
+  messageId?: number,
+) {
   const supabase = createClient();
 
-  // Получаем заказы пользователя
+  // Получаем общее количество заказов для пагинации
+  const { count, error: countError } = await supabase
+    .from('orders')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', telegramId);
+
+  if (countError) {
+    console.error('Ошибка получения количества заказов:', countError);
+    return await sendMessage(chatId, 'Произошла ошибка при получении заказов.');
+  }
+
+  const totalOrders = count || 0;
+  const totalPages = Math.ceil(totalOrders / USER_ORDERS_PER_PAGE);
+
+  // Проверяем, что страница в допустимом диапазоне
+  if (page < 0) page = 0;
+  if (page >= totalPages && totalPages > 0) page = totalPages - 1;
+
+  // Получаем заказы пользователя для текущей страницы
   const { data: orders, error } = await supabase
     .from('orders')
     .select(
@@ -252,7 +275,7 @@ async function handleUserOrders(chatId: number, telegramId: number) {
     )
     .eq('user_id', telegramId)
     .order('created_at', { ascending: false })
-    .limit(5);
+    .range(page * USER_ORDERS_PER_PAGE, (page + 1) * USER_ORDERS_PER_PAGE - 1);
 
   if (error) {
     console.error('Ошибка получения заказов:', error);
@@ -263,17 +286,142 @@ async function handleUserOrders(chatId: number, telegramId: number) {
     return await sendMessage(chatId, 'У вас пока нет заказов.');
   }
 
-  let message = '🛒 <b>Ваши последние заказы</b>\n\n';
+  let message = `🛒 <b>Ваши заказы (страница ${page + 1} из ${totalPages})</b>\n\n`;
 
-  orders.forEach((order) => {
+  // Создаем клавиатуру с кнопками для навигации
+  const keyboard: any = {
+    inline_keyboard: [],
+  };
+
+  // Для каждого заказа получаем товары
+  for (const order of orders) {
     message += `<b>Заказ #${order.id}</b>\n`;
     message += `Магазин: ${order.shops.name}\n`;
     message += `Сумма: ${order.total_amount.toFixed(2)} ₽\n`;
     message += `Статус: ${getStatusEmoji(order.status)} ${getStatusText(order.status)}\n`;
     message += `Дата: ${new Date(order.created_at).toLocaleString()}\n\n`;
-  });
 
-  await sendMessage(chatId, message);
+    // Получаем товары заказа
+    const { data: orderItems } = await supabase
+      .from('orders_list')
+      .select(
+        `
+        *,
+        products:product_id (name)
+      `,
+      )
+      .eq('order_id', order.id);
+
+    if (orderItems && orderItems.length > 0) {
+      message += `<b>Товары:</b>\n`;
+      orderItems.forEach((item) => {
+        message += `- ${item.products.name} x ${item.amount} шт. (${(item.price * item.amount).toFixed(2)} ₽)\n`;
+      });
+    }
+
+    message += '\n';
+
+    // Добавляем кнопку для просмотра деталей заказа
+    keyboard.inline_keyboard.push([
+      {
+        text: `Подробнее о заказе #${order.id}`,
+        callback_data: `view_order_${order.id}`,
+      },
+    ]);
+  }
+
+  // Добавляем кнопки навигации
+  const navButtons = [];
+  if (page > 0) {
+    navButtons.push({
+      text: '◀️ Назад',
+      callback_data: `user_orders_page_${page - 1}`,
+    });
+  }
+  if (page < totalPages - 1) {
+    navButtons.push({
+      text: 'Вперёд ▶️',
+      callback_data: `user_orders_page_${page + 1}`,
+    });
+  }
+
+  if (navButtons.length > 0) {
+    keyboard.inline_keyboard.push(navButtons);
+  }
+
+  // Если есть messageId, редактируем существующее сообщение, иначе отправляем новое
+  if (messageId) {
+    await editMessageWithKeyboard(chatId, messageId, message, keyboard);
+  } else {
+    await sendMessageWithKeyboard(chatId, message, keyboard);
+  }
+}
+async function handleViewOrder(
+  chatId: number,
+  orderId: string,
+  messageId?: number,
+) {
+  const supabase = createClient();
+
+  // Получаем информацию о заказе
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select(
+      `
+      *,
+      shops:shop_id (name)
+    `,
+    )
+    .eq('id', orderId)
+    .single();
+
+  if (error || !order) {
+    await sendMessage(chatId, `❌ Ошибка: заказ #${orderId} не найден.`);
+    return;
+  }
+
+  // Получаем товары заказа
+  const { data: orderItems } = await supabase
+    .from('orders_list')
+    .select(
+      `
+      *,
+      products:product_id (name)
+    `,
+    )
+    .eq('order_id', orderId);
+
+  // Формируем сообщение с информацией о заказе
+  let message = `📋 <b>Заказ #${order.id}</b>\n\n`;
+  message += `Магазин: ${order.shops.name}\n`;
+  message += `Сумма: ${order.total_amount.toFixed(2)} ₽\n`;
+  message += `Статус: ${getStatusEmoji(order.status)} ${getStatusText(order.status)}\n`;
+  message += `Дата: ${new Date(order.created_at).toLocaleString()}\n\n`;
+
+  if (order.comment) message += `Комментарий: ${order.comment}\n\n`;
+
+  // Добавляем информацию о товарах
+  if (orderItems && orderItems.length > 0) {
+    message += `<b>Товары:</b>\n`;
+    orderItems.forEach((item) => {
+      message += `- ${item.products.name} x ${item.amount} шт. (${(item.price * item.amount).toFixed(2)} ₽)\n`;
+    });
+    message += '\n';
+  }
+
+  // Создаем клавиатуру с кнопкой возврата к списку заказов
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '◀️ Назад к заказам', callback_data: 'user_orders_back' }],
+    ],
+  };
+
+  // Если есть messageId, редактируем существующее сообщение, иначе отправляем новое
+  if (messageId) {
+    await editMessageWithKeyboard(chatId, messageId, message, keyboard);
+  } else {
+    await sendMessageWithKeyboard(chatId, message, keyboard);
+  }
 }
 // Функция для отправки уведомления о статусе заказа
 export async function sendOrderStatusNotification(
@@ -957,6 +1105,7 @@ export async function sendOrderNotificationToAdmins(
 }
 
 // Функция для обработки callback-запросов от кнопок
+// Обновите функцию processCallback для обработки новых типов callback-запросов
 export async function processCallback(
   callbackData: string,
   chatId: number,
@@ -986,6 +1135,17 @@ export async function processCallback(
   } else if (callbackData === 'orders_back') {
     // Возврат к списку заказов
     await handleOrders(chatId, [], 0, messageId);
+  } else if (callbackData.startsWith('user_orders_page_')) {
+    // Пагинация заказов пользователя
+    const page = parseInt(callbackData.replace('user_orders_page_', ''), 10);
+    await handleUserOrders(chatId, chatId, page, messageId);
+  } else if (callbackData === 'user_orders_back') {
+    // Возврат к списку заказов пользователя
+    await handleUserOrders(chatId, chatId, 0, messageId);
+  } else if (callbackData.startsWith('view_order_')) {
+    // Просмотр деталей заказа
+    const orderId = callbackData.replace('view_order_', '');
+    await handleViewOrder(chatId, orderId, messageId);
   }
 }
 
