@@ -2209,25 +2209,51 @@ export async function processCallback(
     await handleProcessOrder(chatId, orderId, messageId);
   } else if (callbackData.startsWith('process_order_')) {
     // Обработка конкретного заказа
-    const orderId = callbackData.replace('process_order_', '');
+    const orderId = callbackData.substring('process_order_'.length);
     await handleProcessOrder(chatId, orderId, messageId);
   } else if (callbackData.startsWith('orders_page_')) {
     // Пагинация заказов
-    const page = parseInt(callbackData.replace('orders_page_', ''), 10);
+    const page = parseInt(callbackData.substring('orders_page_'.length), 10);
     await handleOrders(chatId, [], page, messageId);
   } else if (callbackData === 'orders_back') {
     // Возврат к списку заказов
     await handleOrders(chatId, [], 0, messageId);
   } else if (callbackData.startsWith('products_page_')) {
     // Пагинация товаров
-    const page = parseInt(callbackData.replace('products_page_', ''), 10);
+    const page = parseInt(callbackData.substring('products_page_'.length), 10);
     await handleProducts(chatId, [], page, messageId);
   } else if (callbackData === 'products_back') {
     // Возврат к списку товаров
     await handleProducts(chatId, [], 0, messageId);
+  } else if (callbackData.startsWith('edit_product_name_')) {
+    // Редактирование названия товара
+    const productId = callbackData.substring('edit_product_name_'.length);
+    await handleEditProductName(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_description_')) {
+    // Редактирование описания товара
+    const productId = callbackData.substring(
+      'edit_product_description_'.length,
+    );
+    await handleEditProductDescription(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_price_')) {
+    // Редактирование цены товара
+    const productId = callbackData.substring('edit_product_price_'.length);
+    await handleEditProductPrice(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_amount_')) {
+    // Редактирование остатка товара
+    const productId = callbackData.substring('edit_product_amount_'.length);
+    await handleEditProductAmount(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_images_')) {
+    // Редактирование изображений товара
+    const productId = callbackData.substring('edit_product_images_'.length);
+    await handleEditProductImages(chatId, productId);
+  } else if (callbackData.startsWith('edit_product_category_')) {
+    // Редактирование категории товара
+    const productId = callbackData.substring('edit_product_category_'.length);
+    await handleEditProductCategory(chatId, productId);
   } else if (callbackData.startsWith('edit_product_')) {
-    // Редактирование товара
-    const productId = callbackData.replace('edit_product_', '');
+    // Редактирование товара (общий случай)
+    const productId = callbackData.substring('edit_product_'.length);
     await handleEditProduct(chatId, productId, messageId);
   } else if (callbackData === 'add_product') {
     // Добавление нового товара
@@ -2237,39 +2263,38 @@ export async function processCallback(
     await handleManageCategories(chatId, messageId);
   } else if (callbackData.startsWith('toggle_product_status_')) {
     // Изменение статуса товара
-    const productId = callbackData.replace('toggle_product_status_', '');
+    const productId = callbackData.substring('toggle_product_status_'.length);
     await toggleProductStatus(chatId, productId, messageId);
   } else if (callbackData.startsWith('toggle_product_quantity_')) {
     // Изменение возможности изменения количества товара
-    const productId = callbackData.replace('toggle_product_quantity_', '');
+    const productId = callbackData.substring('toggle_product_quantity_'.length);
     await toggleProductQuantity(chatId, productId, messageId);
   } else if (callbackData.startsWith('delete_product_')) {
     // Удаление товара
-    const productId = callbackData.replace('delete_product_', '');
+    const productId = callbackData.substring('delete_product_'.length);
     await deleteProduct(chatId, productId, messageId);
   } else if (callbackData.startsWith('force_delete_product_')) {
     // Принудительное удаление товара
-    const productId = callbackData.replace('force_delete_product_', '');
+    const productId = callbackData.substring('force_delete_product_'.length);
     await deleteProduct(chatId, productId, messageId);
   } else if (callbackData === 'add_category') {
     // Добавление новой категории
     await handleAddCategory(chatId);
   } else if (callbackData.startsWith('edit_category_')) {
     // Редактирование категории
-    const categoryId = callbackData.replace('edit_category_', '');
+    const categoryId = callbackData.substring('edit_category_'.length);
     await handleEditCategory(chatId, categoryId, messageId);
   } else if (callbackData.startsWith('rename_category_')) {
     // Переименование категории
-    const categoryId = callbackData.replace('rename_category_', '');
+    const categoryId = callbackData.substring('rename_category_'.length);
     await handleRenameCategory(chatId, categoryId);
   } else if (callbackData.startsWith('delete_category_')) {
     // Удаление категории
-    const categoryId = callbackData.replace('delete_category_', '');
+    const categoryId = callbackData.substring('delete_category_'.length);
     await handleDeleteCategory(chatId, categoryId, messageId);
-  } // Добавьте этот обработчик в функцию processCallback
-  else if (callbackData.startsWith('force_delete_category_')) {
+  } else if (callbackData.startsWith('force_delete_category_')) {
     // Принудительное удаление категории
-    const categoryId = callbackData.replace('force_delete_category_', '');
+    const categoryId = callbackData.substring('force_delete_category_'.length);
 
     // Получаем информацию о категории
     const { data: category } = await supabase
@@ -2283,33 +2308,11 @@ export async function processCallback(
     } else {
       await sendMessage(chatId, `❌ Ошибка: категория не найдена.`);
     }
-  } else if (callbackData.startsWith('edit_product_description_')) {
-    // Редактирование описания товара
-    const productId = callbackData.replace('edit_product_description_', '');
-    await handleEditProductDescription(chatId, productId);
-  } else if (callbackData.startsWith('edit_product_name_')) {
-    // Редактирование названия товара
-    const productId = callbackData.replace('edit_product_name_', '');
-    await handleEditProductName(chatId, productId);
-  } else if (callbackData.startsWith('edit_product_price_')) {
-    // Редактирование цены товара
-    const productId = callbackData.replace('edit_product_price_', '');
-    await handleEditProductPrice(chatId, productId);
-  } else if (callbackData.startsWith('edit_product_amount_')) {
-    // Редактирование остатка товара
-    const productId = callbackData.replace('edit_product_amount_', '');
-    await handleEditProductAmount(chatId, productId);
-  } else if (callbackData.startsWith('edit_product_images_')) {
-    // Редактирование изображений товара
-    const productId = callbackData.replace('edit_product_images_', '');
-    await handleEditProductImages(chatId, productId);
-  } else if (callbackData.startsWith('edit_product_category_')) {
-    // Редактирование категории товара
-    const productId = callbackData.replace('edit_product_category_', '');
-    await handleEditProductCategory(chatId, productId);
   } else if (callbackData.startsWith('set_product_category_')) {
     // Установка категории товара
-    const parts = callbackData.replace('set_product_category_', '').split('_');
+    const parts = callbackData
+      .substring('set_product_category_'.length)
+      .split('_');
     const productId = parts[0];
     const categoryId = parts[1] === 'null' ? null : parts[1];
 
