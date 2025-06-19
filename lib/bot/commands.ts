@@ -1496,6 +1496,7 @@ export async function processDialogState(
   user: any,
 ) {
   const supabase = createClient();
+  console.log('Обработка диалога:', { text, chatId });
 
   // Получаем текущее состояние диалога
   const { data: dialogState, error } = await supabase
@@ -1505,206 +1506,220 @@ export async function processDialogState(
     .single();
 
   if (error || !dialogState) {
+    console.log('Нет активного диалога:', error);
     // Если нет активного диалога, обрабатываем как обычное сообщение
     return await processMessage(text, chatId, user);
   }
 
+  console.log('Текущее состояние диалога:', dialogState);
+
   // Обрабатываем различные состояния диалога
-  switch (dialogState.state) {
-    case 'adding_category':
-      // Добавление новой категории
-      const { data: newCategory, error: categoryError } = await supabase
-        .from('categories')
-        .insert({
-          name: text,
-          shop_id: dialogState.data.shop_id,
-        })
-        .select()
-        .single();
+  try {
+    switch (dialogState.state) {
+      case 'adding_category':
+        // Добавление новой категории
+        const { data: newCategory, error: categoryError } = await supabase
+          .from('categories')
+          .insert({
+            name: text,
+            shop_id: dialogState.data.shop_id,
+          })
+          .select()
+          .single();
 
-      if (categoryError) {
+        if (categoryError) {
+          console.error('Ошибка при создании категории:', categoryError);
+          await sendMessage(
+            chatId,
+            `❌ Ошибка при создании категории: ${categoryError.message}`,
+          );
+        } else {
+          await sendMessage(chatId, `✅ Категория "${text}" успешно создана!`);
+          await handleManageCategories(chatId);
+        }
+        break;
+
+      case 'renaming_category':
+        // Переименование категории
+        const { error: renameError } = await supabase
+          .from('categories')
+          .update({ name: text })
+          .eq('id', dialogState.data.category_id);
+
+        if (renameError) {
+          console.error('Ошибка при переименовании категории:', renameError);
+          await sendMessage(
+            chatId,
+            `❌ Ошибка при переименовании категории: ${renameError.message}`,
+          );
+        } else {
+          await sendMessage(
+            chatId,
+            `✅ Категория "${dialogState.data.current_name}" успешно переименована в "${text}"!`,
+          );
+          await handleManageCategories(chatId);
+        }
+        break;
+
+      case 'editing_product_name':
+        // Редактирование названия товара
+        console.log('Обновление названия товара:', {
+          productId: dialogState.data.product_id,
+          newName: text,
+        });
+
+        const { error: nameError } = await supabase
+          .from('products')
+          .update({ name: text })
+          .eq('id', dialogState.data.product_id);
+
+        if (nameError) {
+          console.error('Ошибка при обновлении названия товара:', nameError);
+          await sendMessage(
+            chatId,
+            `❌ Ошибка при обновлении названия товара: ${nameError.message}`,
+          );
+        } else {
+          await sendMessage(
+            chatId,
+            `✅ Название товара изменено с "${dialogState.data.current_name}" на "${text}"!`,
+          );
+          await handleEditProduct(chatId, dialogState.data.product_id);
+        }
+        break;
+
+      case 'editing_product_description':
+        // Редактирование описания товара
+        console.log('Обновление описания товара:', {
+          productId: dialogState.data.product_id,
+          newDescription: text,
+        });
+
+        const { error: descriptionError } = await supabase
+          .from('products')
+          .update({ description: text })
+          .eq('id', dialogState.data.product_id);
+
+        if (descriptionError) {
+          console.error(
+            'Ошибка при обновлении описания товара:',
+            descriptionError,
+          );
+          await sendMessage(
+            chatId,
+            `❌ Ошибка при обновлении описания товара: ${descriptionError.message}`,
+          );
+        } else {
+          await sendMessage(
+            chatId,
+            `✅ Описание товара "${dialogState.data.product_name}" успешно обновлено!`,
+          );
+          await handleEditProduct(chatId, dialogState.data.product_id);
+        }
+        break;
+
+      case 'editing_product_price':
+        // Редактирование цены товара
+        const price = parseFloat(text);
+
+        if (isNaN(price) || price <= 0) {
+          await sendMessage(
+            chatId,
+            `❌ Ошибка: введите корректную цену (положительное число).`,
+          );
+          return;
+        }
+
+        console.log('Обновление цены товара:', {
+          productId: dialogState.data.product_id,
+          newPrice: price,
+        });
+
+        const { error: priceError } = await supabase
+          .from('products')
+          .update({ price })
+          .eq('id', dialogState.data.product_id);
+
+        if (priceError) {
+          console.error('Ошибка при обновлении цены товара:', priceError);
+          await sendMessage(
+            chatId,
+            `❌ Ошибка при обновлении цены товара: ${priceError.message}`,
+          );
+        } else {
+          await sendMessage(
+            chatId,
+            `✅ Цена товара "${dialogState.data.product_name}" изменена на ${price.toFixed(2)} ₽!`,
+          );
+          await handleEditProduct(chatId, dialogState.data.product_id);
+        }
+        break;
+
+      case 'editing_product_amount':
+        // Редактирование остатка товара
+        const amount = parseInt(text);
+
+        if (isNaN(amount) || amount < 0) {
+          await sendMessage(
+            chatId,
+            `❌ Ошибка: введите корректное количество (целое неотрицательное число).`,
+          );
+          return;
+        }
+
+        console.log('Обновление остатка товара:', {
+          productId: dialogState.data.product_id,
+          newAmount: amount,
+        });
+
+        const { error: amountError } = await supabase
+          .from('products')
+          .update({ amount })
+          .eq('id', dialogState.data.product_id);
+
+        if (amountError) {
+          console.error('Ошибка при обновлении остатка товара:', amountError);
+          await sendMessage(
+            chatId,
+            `❌ Ошибка при обновлении остатка товара: ${amountError.message}`,
+          );
+        } else {
+          await sendMessage(
+            chatId,
+            `✅ Остаток товара "${dialogState.data.product_name}" изменен на ${amount} шт.!`,
+          );
+          await handleEditProduct(chatId, dialogState.data.product_id);
+        }
+        break;
+
+      default:
+        // Неизвестное состояние диалога
+        console.warn('Неизвестное состояние диалога:', dialogState.state);
         await sendMessage(
           chatId,
-          `❌ Ошибка при создании категории: ${categoryError.message}`,
+          `❌ Неизвестное состояние диалога. Пожалуйста, начните заново.`,
         );
-      } else {
-        await sendMessage(chatId, `✅ Категория "${text}" успешно создана!`);
-        await handleManageCategories(chatId);
-      }
-
-      // Очищаем состояние диалога
+    }
+  } catch (error) {
+    console.error('Ошибка при обработке диалога:', error);
+    await sendMessage(
+      chatId,
+      `❌ Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте еще раз.`,
+    );
+  } finally {
+    // Очищаем состояние диалога
+    try {
       await supabase
         .from('bot_dialog_states')
         .delete()
         .eq('telegram_id', chatId);
-      break;
-
-    case 'renaming_category':
-      // Переименование категории
-      const { error: renameError } = await supabase
-        .from('categories')
-        .update({ name: text })
-        .eq('id', dialogState.data.category_id);
-
-      if (renameError) {
-        await sendMessage(
-          chatId,
-          `❌ Ошибка при переименовании категории: ${renameError.message}`,
-        );
-      } else {
-        await sendMessage(
-          chatId,
-          `✅ Категория "${dialogState.data.current_name}" успешно переименована в "${text}"!`,
-        );
-        await handleManageCategories(chatId);
-      }
-
-      // Очищаем состояние диалога
-      await supabase
-        .from('bot_dialog_states')
-        .delete()
-        .eq('telegram_id', chatId);
-      break;
-
-    case 'editing_product_description':
-      // Редактирование описания товара
-      const { error: descriptionError } = await supabase
-        .from('products')
-        .update({ description: text })
-        .eq('id', dialogState.data.product_id);
-
-      if (descriptionError) {
-        await sendMessage(
-          chatId,
-          `❌ Ошибка при обновлении описания товара: ${descriptionError.message}`,
-        );
-      } else {
-        await sendMessage(
-          chatId,
-          `✅ Описание товара "${dialogState.data.product_name}" успешно обновлено!`,
-        );
-        await handleEditProduct(chatId, dialogState.data.product_id);
-      }
-
-      // Очищаем состояние диалога
-      await supabase
-        .from('bot_dialog_states')
-        .delete()
-        .eq('telegram_id', chatId);
-      break;
-    case 'editing_product_name':
-      // Редактирование названия товара
-      const { error: nameError } = await supabase
-        .from('products')
-        .update({ name: text })
-        .eq('id', dialogState.data.product_id);
-
-      if (nameError) {
-        await sendMessage(
-          chatId,
-          `❌ Ошибка при обновлении названия товара: ${nameError.message}`,
-        );
-      } else {
-        await sendMessage(
-          chatId,
-          `✅ Название товара изменено с "${dialogState.data.current_name}" на "${text}"!`,
-        );
-        await handleEditProduct(chatId, dialogState.data.product_id);
-      }
-
-      // Очищаем состояние диалога
-      await supabase
-        .from('bot_dialog_states')
-        .delete()
-        .eq('telegram_id', chatId);
-      break;
-
-    case 'editing_product_price':
-      // Редактирование цены товара
-      const price = parseFloat(text);
-
-      if (isNaN(price) || price <= 0) {
-        await sendMessage(
-          chatId,
-          `❌ Ошибка: введите корректную цену (положительное число).`,
-        );
-        return;
-      }
-
-      const { error: priceError } = await supabase
-        .from('products')
-        .update({ price })
-        .eq('id', dialogState.data.product_id);
-
-      if (priceError) {
-        await sendMessage(
-          chatId,
-          `❌ Ошибка при обновлении цены товара: ${priceError.message}`,
-        );
-      } else {
-        await sendMessage(
-          chatId,
-          `✅ Цена товара "${dialogState.data.product_name}" изменена на ${price.toFixed(2)} ₽!`,
-        );
-        await handleEditProduct(chatId, dialogState.data.product_id);
-      }
-
-      // Очищаем состояние диалога
-      await supabase
-        .from('bot_dialog_states')
-        .delete()
-        .eq('telegram_id', chatId);
-      break;
-    case 'editing_product_amount':
-      // Редактирование остатка товара
-      const amount = parseInt(text);
-
-      if (isNaN(amount) || amount < 0) {
-        await sendMessage(
-          chatId,
-          `❌ Ошибка: введите корректное количество (целое неотрицательное число).`,
-        );
-        return;
-      }
-
-      const { error: amountError } = await supabase
-        .from('products')
-        .update({ amount })
-        .eq('id', dialogState.data.product_id);
-
-      if (amountError) {
-        await sendMessage(
-          chatId,
-          `❌ Ошибка при обновлении остатка товара: ${amountError.message}`,
-        );
-      } else {
-        await sendMessage(
-          chatId,
-          `✅ Остаток товара "${dialogState.data.product_name}" изменен на ${amount} шт.!`,
-        );
-        await handleEditProduct(chatId, dialogState.data.product_id);
-      }
-
-      // Очищаем состояние диалога
-      await supabase
-        .from('bot_dialog_states')
-        .delete()
-        .eq('telegram_id', chatId);
-      break;
-    default:
-      // Неизвестное состояние диалога
-      await sendMessage(
-        chatId,
-        `❌ Неизвестное состояние диалога. Пожалуйста, начните заново.`,
-      );
-
-      // Очищаем состояние диалога
-      await supabase
-        .from('bot_dialog_states')
-        .delete()
-        .eq('telegram_id', chatId);
+      console.log('Состояние диалога очищено');
+    } catch (error) {
+      console.error('Ошибка при очистке состояния диалога:', error);
+    }
   }
 }
+
 // Функция для редактирования названия товара
 async function handleEditProductName(chatId: number, productId: string) {
   const supabase = createClient();

@@ -4,7 +4,9 @@ import {
   processCommand,
   processCallback,
   processMessage,
+  processDialogState,
 } from '@/lib/bot/commands';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(
   request: NextRequest,
@@ -28,13 +30,43 @@ export async function POST(
       const text = update.message.text;
       const user = update.message.from;
 
-      // Если сообщение начинается с "/", обрабатываем как команду
-      if (text.startsWith('/')) {
-        await processCommand(text, chatId, user);
-      }
-      // Иначе обрабатываем как текстовое сообщение
-      else {
-        await processMessage(text, chatId, user);
+      try {
+        // Проверяем, есть ли активный диалог
+        const supabase = createClient();
+        const { data: dialogState } = await supabase
+          .from('bot_dialog_states')
+          .select('*')
+          .eq('telegram_id', chatId)
+          .single();
+
+        if (dialogState) {
+          console.log('Обнаружен активный диалог:', dialogState);
+          // Если есть активный диалог, обрабатываем как часть диалога
+          await processDialogState(text, chatId, user);
+        }
+        // Если сообщение начинается с "/", обрабатываем как команду
+        else if (text.startsWith('/')) {
+          console.log('Обработка команды:', text);
+          await processCommand(text, chatId, user);
+        }
+        // Иначе обрабатываем как текстовое сообщение
+        else {
+          console.log('Обработка текстового сообщения:', text);
+          await processMessage(text, chatId, user);
+        }
+      } catch (error) {
+        console.error('Ошибка при обработке сообщения:', error);
+        // Отправляем сообщение об ошибке пользователю
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: '❌ Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте еще раз.',
+          }),
+        });
       }
     }
 
@@ -44,7 +76,23 @@ export async function POST(
       const chatId = update.callback_query.from.id;
       const messageId = update.callback_query.message.message_id;
 
-      await processCallback(callbackData, chatId, messageId);
+      try {
+        console.log('Обработка callback-запроса:', callbackData);
+        await processCallback(callbackData, chatId, messageId);
+      } catch (error) {
+        console.error('Ошибка при обработке callback-запроса:', error);
+        // Отправляем сообщение об ошибке пользователю
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: '❌ Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте еще раз.',
+          }),
+        });
+      }
 
       // Отправляем ответ на callback-запрос, чтобы убрать индикатор загрузки с кнопки
       await fetch(
