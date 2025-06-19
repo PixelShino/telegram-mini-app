@@ -1498,69 +1498,29 @@ export async function processDialogState(
   const supabase = createClient();
   console.log('Обработка диалога:', { text, chatId });
 
-  // Получаем текущее состояние диалога
-  const { data: dialogState, error } = await supabase
-    .from('bot_dialog_states')
-    .select('*')
-    .eq('telegram_id', chatId)
-    .single();
-
-  if (error || !dialogState) {
-    console.log('Нет активного диалога:', error);
-    // Если нет активного диалога, обрабатываем как обычное сообщение
-    return await processMessage(text, chatId, user);
-  }
-
-  console.log('Текущее состояние диалога:', dialogState);
-
-  // Обрабатываем различные состояния диалога
   try {
+    // Получаем текущее состояние диалога
+    const { data: dialogState, error } = await supabase
+      .from('bot_dialog_states')
+      .select('*')
+      .eq('telegram_id', chatId)
+      .single();
+
+    if (error) {
+      console.error('Ошибка получения состояния диалога:', error);
+      await sendMessage(chatId, '❌ Произошла ошибка при обработке диалога.');
+      return await processMessage(text, chatId, user);
+    }
+
+    if (!dialogState) {
+      console.log('Нет активного диалога');
+      return await processMessage(text, chatId, user);
+    }
+
+    console.log('Текущее состояние диалога:', dialogState);
+
+    // Обрабатываем различные состояния диалога
     switch (dialogState.state) {
-      case 'adding_category':
-        // Добавление новой категории
-        const { data: newCategory, error: categoryError } = await supabase
-          .from('categories')
-          .insert({
-            name: text,
-            shop_id: dialogState.data.shop_id,
-          })
-          .select()
-          .single();
-
-        if (categoryError) {
-          console.error('Ошибка при создании категории:', categoryError);
-          await sendMessage(
-            chatId,
-            `❌ Ошибка при создании категории: ${categoryError.message}`,
-          );
-        } else {
-          await sendMessage(chatId, `✅ Категория "${text}" успешно создана!`);
-          await handleManageCategories(chatId);
-        }
-        break;
-
-      case 'renaming_category':
-        // Переименование категории
-        const { error: renameError } = await supabase
-          .from('categories')
-          .update({ name: text })
-          .eq('id', dialogState.data.category_id);
-
-        if (renameError) {
-          console.error('Ошибка при переименовании категории:', renameError);
-          await sendMessage(
-            chatId,
-            `❌ Ошибка при переименовании категории: ${renameError.message}`,
-          );
-        } else {
-          await sendMessage(
-            chatId,
-            `✅ Категория "${dialogState.data.current_name}" успешно переименована в "${text}"!`,
-          );
-          await handleManageCategories(chatId);
-        }
-        break;
-
       case 'editing_product_name':
         // Редактирование названия товара
         console.log('Обновление названия товара:', {
@@ -1580,6 +1540,7 @@ export async function processDialogState(
             `❌ Ошибка при обновлении названия товара: ${nameError.message}`,
           );
         } else {
+          console.log('Название товара успешно обновлено');
           await sendMessage(
             chatId,
             `✅ Название товара изменено с "${dialogState.data.current_name}" на "${text}"!`,
@@ -1610,6 +1571,7 @@ export async function processDialogState(
             `❌ Ошибка при обновлении описания товара: ${descriptionError.message}`,
           );
         } else {
+          console.log('Описание товара успешно обновлено');
           await sendMessage(
             chatId,
             `✅ Описание товара "${dialogState.data.product_name}" успешно обновлено!`,
@@ -1647,6 +1609,7 @@ export async function processDialogState(
             `❌ Ошибка при обновлении цены товара: ${priceError.message}`,
           );
         } else {
+          console.log('Цена товара успешно обновлена');
           await sendMessage(
             chatId,
             `✅ Цена товара "${dialogState.data.product_name}" изменена на ${price.toFixed(2)} ₽!`,
@@ -1684,6 +1647,7 @@ export async function processDialogState(
             `❌ Ошибка при обновлении остатка товара: ${amountError.message}`,
           );
         } else {
+          console.log('Остаток товара успешно обновлен');
           await sendMessage(
             chatId,
             `✅ Остаток товара "${dialogState.data.product_name}" изменен на ${amount} шт.!`,
@@ -1691,6 +1655,8 @@ export async function processDialogState(
           await handleEditProduct(chatId, dialogState.data.product_id);
         }
         break;
+
+      // Другие состояния диалога...
 
       default:
         // Неизвестное состояние диалога
@@ -1723,6 +1689,7 @@ export async function processDialogState(
 // Функция для редактирования названия товара
 async function handleEditProductName(chatId: number, productId: string) {
   const supabase = createClient();
+  console.log('Запуск редактирования названия товара:', { chatId, productId });
 
   // Получаем информацию о товаре
   const { data: product, error } = await supabase
@@ -1732,17 +1699,30 @@ async function handleEditProductName(chatId: number, productId: string) {
     .single();
 
   if (error || !product) {
+    console.error('Ошибка получения товара:', error);
     await sendMessage(chatId, `❌ Ошибка: товар #${productId} не найден.`);
     return;
   }
 
+  console.log('Товар найден:', product);
+
   // Сохраняем состояние диалога
-  await supabase.from('bot_dialog_states').upsert({
-    telegram_id: chatId,
-    state: 'editing_product_name',
-    data: { product_id: productId, current_name: product.name },
-    updated_at: new Date().toISOString(),
-  });
+  const { error: dialogError } = await supabase
+    .from('bot_dialog_states')
+    .upsert({
+      telegram_id: chatId,
+      state: 'editing_product_name',
+      data: { product_id: productId, current_name: product.name },
+      updated_at: new Date().toISOString(),
+    });
+
+  if (dialogError) {
+    console.error('Ошибка сохранения состояния диалога:', dialogError);
+    await sendMessage(chatId, `❌ Ошибка: не удалось начать редактирование.`);
+    return;
+  }
+
+  console.log('Состояние диалога сохранено');
 
   // Отправляем запрос на ввод нового названия товара
   await sendMessage(
