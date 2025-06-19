@@ -205,6 +205,38 @@ async function handleStart(chatId: number, user: any, isAdmin: boolean) {
   }
 }
 
+export async function processMessage(text: string, chatId: number, user: any) {
+  // Обработка кнопки "Перейти в магазин"
+  if (text === 'Перейти в магазин') {
+    const shop = await getUserShop(user.id);
+
+    if (!shop) {
+      return await sendMessage(chatId, 'Магазин временно недоступен.');
+    }
+
+    // Создаем inline-кнопку для перехода в магазин
+    const inlineKeyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: 'Перейти в магазин',
+            web_app: {
+              url: `https://telegram-mini-app-tan-ten.vercel.app/shop/${shop.id}`,
+            },
+          },
+        ],
+      ],
+    };
+
+    // Отправляем сообщение с inline-кнопкой
+    return await sendMessageWithKeyboard(
+      chatId,
+      'Нажмите на кнопку, чтобы открыть магазин:',
+      inlineKeyboard,
+    );
+  }
+}
+
 // Обработчик для просмотра заказов пользователя
 async function handleUserOrders(chatId: number, telegramId: number) {
   const supabase = createClient();

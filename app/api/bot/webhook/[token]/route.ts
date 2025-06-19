@@ -1,6 +1,10 @@
 // app/api/bot/webhook/[token]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { processCommand, processCallback } from '@/lib/bot/commands';
+import {
+  processCommand,
+  processCallback,
+  processMessage,
+} from '@/lib/bot/commands';
 
 export async function POST(
   request: NextRequest,
@@ -18,13 +22,20 @@ export async function POST(
     console.log('Получен вебхук от Telegram, токен:', token);
     console.log('Данные вебхука:', update);
 
-    // Обработка команд
-    if (update.message?.text && update.message.text.startsWith('/')) {
+    // Обработка сообщений
+    if (update.message?.text) {
       const chatId = update.message.chat.id;
-      const command = update.message.text;
+      const text = update.message.text;
       const user = update.message.from;
 
-      await processCommand(command, chatId, user);
+      // Если сообщение начинается с "/", обрабатываем как команду
+      if (text.startsWith('/')) {
+        await processCommand(text, chatId, user);
+      }
+      // Иначе обрабатываем как текстовое сообщение
+      else {
+        await processMessage(text, chatId, user);
+      }
     }
 
     // Обработка callback-запросов от кнопок
