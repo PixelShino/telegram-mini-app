@@ -10,8 +10,9 @@ const nextConfig = {
     unoptimized: true,
   },
   experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
+    // serverComponentsExternalPackages: ['@supabase/supabase-js'],
+    serverExternalPackages: ['@supabase/supabase-js'],
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;
