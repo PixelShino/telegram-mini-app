@@ -1495,7 +1495,6 @@ export async function processDialogState(
   chatId: number,
   user: any,
 ) {
-  const supabase = createClient();
   console.log('Обработка диалога:', { text, chatId });
 
   try {
@@ -1685,53 +1684,105 @@ export async function processDialogState(
     }
   }
 }
-
 // Функция для редактирования названия товара
 async function handleEditProductName(chatId: number, productId: string) {
-  const supabase = createClient();
   console.log('Запуск редактирования названия товара:', { chatId, productId });
 
-  // Получаем информацию о товаре
-  const { data: product, error } = await supabase
-    .from('products')
-    .select('name')
-    .eq('id', productId)
-    .single();
+  try {
+    // Получаем информацию о товаре
+    const { data: product, error } = await supabase
+      .from('products')
+      .select('name')
+      .eq('id', productId)
+      .single();
 
-  if (error || !product) {
-    console.error('Ошибка получения товара:', error);
-    await sendMessage(chatId, `❌ Ошибка: товар #${productId} не найден.`);
-    return;
+    if (error || !product) {
+      console.error('Ошибка получения товара:', error);
+      await sendMessage(chatId, `❌ Ошибка: товар #${productId} не найден.`);
+      return;
+    }
+
+    console.log('Товар найден:', product);
+
+    // Сохраняем состояние диалога
+    const { error: dialogError } = await supabase
+      .from('bot_dialog_states')
+      .upsert({
+        telegram_id: chatId,
+        state: 'editing_product_name',
+        data: { product_id: productId, current_name: product.name },
+        updated_at: new Date().toISOString(),
+      });
+
+    if (dialogError) {
+      console.error('Ошибка сохранения состояния диалога:', dialogError);
+      await sendMessage(chatId, `❌ Ошибка: не удалось начать редактирование.`);
+      return;
+    }
+
+    console.log('Состояние диалога сохранено');
+
+    // Отправляем запрос на ввод нового названия товара
+    await sendMessage(
+      chatId,
+      `Редактирование названия товара\n\n` +
+        `Текущее название: <b>${product.name}</b>\n\n` +
+        `Введите новое название товара:`,
+    );
+  } catch (error) {
+    console.error('Ошибка при запуске редактирования названия товара:', error);
+    await sendMessage(
+      chatId,
+      `❌ Произошла ошибка при запуске редактирования. Пожалуйста, попробуйте еще раз.`,
+    );
   }
-
-  console.log('Товар найден:', product);
-
-  // Сохраняем состояние диалога
-  const { error: dialogError } = await supabase
-    .from('bot_dialog_states')
-    .upsert({
-      telegram_id: chatId,
-      state: 'editing_product_name',
-      data: { product_id: productId, current_name: product.name },
-      updated_at: new Date().toISOString(),
-    });
-
-  if (dialogError) {
-    console.error('Ошибка сохранения состояния диалога:', dialogError);
-    await sendMessage(chatId, `❌ Ошибка: не удалось начать редактирование.`);
-    return;
-  }
-
-  console.log('Состояние диалога сохранено');
-
-  // Отправляем запрос на ввод нового названия товара
-  await sendMessage(
-    chatId,
-    `Редактирование названия товара\n\n` +
-      `Текущее название: <b>${product.name}</b>\n\n` +
-      `Введите новое название товара:`,
-  );
 }
+
+// async function handleEditProductName(chatId: number, productId: string) {
+//   const supabase = createClient();
+//   console.log('Запуск редактирования названия товара:', { chatId, productId });
+
+//   // Получаем информацию о товаре
+//   const { data: product, error } = await supabase
+//     .from('products')
+//     .select('name')
+//     .eq('id', productId)
+//     .single();
+
+//   if (error || !product) {
+//     console.error('Ошибка получения товара:', error);
+//     await sendMessage(chatId, `❌ Ошибка: товар #${productId} не найден.`);
+//     return;
+//   }
+
+//   console.log('Товар найден:', product);
+
+//   // Сохраняем состояние диалога
+//   const { error: dialogError } = await supabase
+//     .from('bot_dialog_states')
+//     .upsert({
+//       telegram_id: chatId,
+//       state: 'editing_product_name',
+//       data: { product_id: productId, current_name: product.name },
+//       updated_at: new Date().toISOString(),
+//     });
+
+//   if (dialogError) {
+//     console.error('Ошибка сохранения состояния диалога:', dialogError);
+//     await sendMessage(chatId, `❌ Ошибка: не удалось начать редактирование.`);
+//     return;
+//   }
+
+//   console.log('Состояние диалога сохранено');
+
+//   // Отправляем запрос на ввод нового названия товара
+//   await sendMessage(
+//     chatId,
+//     `Редактирование названия товара\n\n` +
+//       `Текущее название: <b>${product.name}</b>\n\n` +
+//       `Введите новое название товара:`,
+//   );
+// }
 
 // Функция для редактирования цены товара
 async function handleEditProductPrice(chatId: number, productId: string) {
