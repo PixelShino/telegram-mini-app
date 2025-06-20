@@ -15,4 +15,6 @@ export interface Product {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  category_id: number;
+  category: string;
 }

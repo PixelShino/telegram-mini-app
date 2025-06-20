@@ -40,6 +40,17 @@ interface CartState {
   getItemQuantity: (productId: string) => number;
   clearCart: () => void;
 }
+interface Category {
+  id: number | string;
+  name: string;
+  slug?: string;
+  parent_id?: number | null;
+  shop_id?: string;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+  children?: Category[];
+}
 
 const useCartStore = create<CartState>()(
   persist(
@@ -134,45 +145,7 @@ export default function ShopContent({
     getItemQuantity,
     clearCart,
   } = useCartStore();
-
-  // Категории товаров с подкатегориями
-  const categories = [
-    {
-      id: 'electronics',
-      name: 'Электроника',
-      subcategories: [
-        { id: 'phones', name: 'Телефоны' },
-        { id: 'tablets', name: 'Планшеты' },
-        { id: 'smart-devices', name: 'Умные устройства' },
-      ],
-    },
-    {
-      id: 'computers',
-      name: 'Компьютеры',
-      subcategories: [
-        { id: 'laptops', name: 'Ноутбуки' },
-        { id: 'desktops', name: 'Настольные ПК' },
-        { id: 'components', name: 'Комплектующие' },
-      ],
-    },
-    {
-      id: 'accessories',
-      name: 'Аксессуары',
-      subcategories: [
-        { id: 'audio', name: 'Аудио' },
-        { id: 'input', name: 'Клавиатуры и мыши' },
-        { id: 'cases', name: 'Чехлы и сумки' },
-      ],
-    },
-    {
-      id: 'watches',
-      name: 'Часы',
-      subcategories: [
-        { id: 'smart-watches', name: 'Умные часы' },
-        { id: 'fitness', name: 'Фитнес-браслеты' },
-      ],
-    },
-  ];
+  const [categories, setCategories] = useState<Category[]>([]);
 
   // Фильтрация товаров (исключаем дополнения из основного списка)
   const filteredProducts = useMemo(() => {
@@ -190,47 +163,193 @@ export default function ShopContent({
 
     if (selectedCategory) {
       filtered = filtered.filter((product) => {
-        // Фильтрация по категориям
-        if (selectedCategory === 'electronics') {
-          if (selectedSubcategory === 'phones')
-            return product.name.includes('iPhone');
-          if (selectedSubcategory === 'tablets')
-            return product.name.includes('iPad');
-          if (selectedSubcategory === 'smart-devices')
-            return product.name.includes('Watch');
-          return (
-            product.name.includes('iPhone') ||
-            product.name.includes('iPad') ||
-            product.name.includes('Watch')
+        // Проверяем по category_id (если есть)
+        if (
+          product.category_id &&
+          product.category_id.toString() === selectedCategory
+        ) {
+          return true;
+        }
+
+        // Проверяем по текстовому полю category
+        if (selectedSubcategory) {
+          // Если выбрана подкатегория, ищем точное совпадение с текстовым полем
+          const subcategory = categories.find(
+            (c) => c.id.toString() === selectedSubcategory,
           );
-        }
-        if (selectedCategory === 'computers') {
-          if (selectedSubcategory === 'laptops')
-            return product.name.includes('MacBook');
-          return product.name.includes('MacBook');
-        }
-        if (selectedCategory === 'accessories') {
-          if (selectedSubcategory === 'audio')
-            return product.name.includes('AirPods');
-          if (selectedSubcategory === 'input')
-            return product.name.includes('Keyboard');
-          return (
-            product.name.includes('AirPods') ||
-            product.name.includes('Keyboard')
+          return product.category === subcategory?.name;
+        } else {
+          // Если выбрана только основная категория
+          const category = categories.find(
+            (c) => c.id.toString() === selectedCategory,
           );
+
+          // Проверяем совпадение с текстовым полем category
+          if (product.category === category?.name) {
+            return true;
+          }
+
+          // Проверяем, является ли категория родительской для категории товара
+          const productCategoryObj = categories.find(
+            (c) =>
+              c.name === product.category ||
+              (product.category_id && c.id === product.category_id),
+          );
+
+          return productCategoryObj?.parent_id?.toString() === selectedCategory;
         }
-        if (selectedCategory === 'watches') {
-          return product.name.includes('Watch');
-        }
-        return true;
       });
     }
 
     return filtered;
-  }, [products, searchQuery, selectedCategory, selectedSubcategory]);
+  }, [
+    products,
+    searchQuery,
+    selectedCategory,
+    selectedSubcategory,
+    categories,
+  ]);
+
+  // Функция для построения дерева категорий
+  const buildCategoryTree = (categories: Category[]) => {
+    const rootCategories = categories.filter((c) => !c.parent_id);
+
+    return rootCategories.map((rootCategory) => {
+      const children = categories.filter(
+        (c) => c.parent_id === rootCategory.id,
+      );
+      return {
+        ...rootCategory,
+        children,
+      };
+    });
+  };
+  // Функция для преобразования категорий из базы данных в формат для CategoryFilter
+  // Функция для преобразования категорий из базы данных в формат для CategoryFilter
+  const prepareCategoriesForFilter = (categories: Category[]) => {
+    console.log('Исходные категории:', categories);
+    console.log('Товары:', products);
+
+    // Сначала строим дерево всех категорий
+    const rootCategories = categories.filter((c) => !c.parent_id);
+
+    const categoryTree = rootCategories.map((rootCategory) => {
+      const children = categories.filter(
+        (c) => c.parent_id === rootCategory.id,
+      );
+
+      return {
+        ...rootCategory,
+        children: children || [],
+      };
+    });
+
+    // Затем фильтруем только те категории, которые имеют товары
+    const filteredTree = categoryTree.filter((rootCategory) => {
+      // Проверяем, есть ли товары в корневой категории
+      const hasProductsInRoot = products.some(
+        (product) =>
+          product.category_id === rootCategory.id ||
+          product.category === rootCategory.name,
+      );
+
+      // Проверяем, есть ли товары в подкатегориях
+      const hasProductsInChildren = rootCategory.children.some((child) =>
+        products.some(
+          (product) =>
+            product.category_id === child.id || product.category === child.name,
+        ),
+      );
+
+      // Фильтруем подкатегории, оставляя только те, которые имеют товары
+      if (hasProductsInChildren) {
+        rootCategory.children = rootCategory.children.filter((child) =>
+          products.some(
+            (product) =>
+              product.category_id === child.id ||
+              product.category === child.name,
+          ),
+        );
+      }
+
+      return hasProductsInRoot || hasProductsInChildren;
+    });
+
+    console.log('Отфильтрованное дерево категорий:', filteredTree);
+    return filteredTree;
+  };
+
+  // Компонент для отображения категорий
+  // const CategoryMenu = () => {
+  //   const categoryTree = buildCategoryTree(categories);
+
+  //   return (
+  //     <div className='space-y-2'>
+  //       <h3 className='font-medium'>Категории</h3>
+  //       <div className='space-y-1'>
+  //         <Button
+  //           variant={selectedCategory === null ? 'default' : 'outline'}
+  //           size='sm'
+  //           className='justify-start w-full'
+  //           onClick={() => handleCategorySelect(null)}
+  //         >
+  //           Все товары
+  //         </Button>
+
+  //         {categoryTree.map((category) => (
+  //           <div key={category.id} className='space-y-1'>
+  //             <Button
+  //               variant={
+  //                 selectedCategory === category.id.toString()
+  //                   ? 'default'
+  //                   : 'outline'
+  //               }
+  //               size='sm'
+  //               className='justify-start w-full'
+  //               onClick={() => handleCategorySelect(category.id.toString())}
+  //             >
+  //               {category.name}
+  //             </Button>
+
+  //             {selectedCategory === category.id.toString() &&
+  //               category.children &&
+  //               category.children.length > 0 && (
+  //                 <div className='pl-4 space-y-1'>
+  //                   {category.children.map((subcat) => (
+  //                     <Button
+  //                       key={subcat.id}
+  //                       variant={
+  //                         selectedSubcategory === subcat.id.toString()
+  //                           ? 'default'
+  //                           : 'ghost'
+  //                       }
+  //                       size='sm'
+  //                       className='justify-start w-full'
+  //                       onClick={() =>
+  //                         handleCategorySelect(
+  //                           category.id.toString(),
+  //                           subcat.id.toString(),
+  //                         )
+  //                       }
+  //                     >
+  //                       {subcat.name}
+  //                     </Button>
+  //                   ))}
+  //                 </div>
+  //               )}
+  //           </div>
+  //         ))}
+  //       </div>
+  //     </div>
+  //   );
+  // };
 
   useEffect(() => {
     fetchProducts();
+  }, [shop.id]);
+
+  useEffect(() => {
+    fetchCategories();
   }, [shop.id]);
 
   useEffect(() => {
@@ -303,12 +422,50 @@ export default function ShopContent({
       console.error('Ошибка при сохранении данных пользователя:', error);
     }
   };
+  const fetchCategories = async () => {
+    try {
+      console.log('Загрузка категорий для магазина:', shop.id);
+      const response = await fetch(`/api/shops/${shop.id}/categories`);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Загружено категорий:', data.length, data);
+
+        // Проверяем, что данные действительно являются категориями
+        const validCategories = data.filter(
+          (item: any) =>
+            item.hasOwnProperty('name') &&
+            item.hasOwnProperty('id') &&
+            !item.hasOwnProperty('price'), // товары имеют поле price
+        );
+
+        console.log('Валидные категории:', validCategories);
+        setCategories(validCategories);
+      } else {
+        console.error('Ошибка загрузки категорий:', await response.text());
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки категорий:', error);
+    }
+  };
 
   const fetchProducts = async () => {
+    setLoading(true);
     try {
-      const response = await fetch(`/api/shops/${shop.id}/products`);
-      const data = await response.json();
-      setProducts(data);
+      const timestamp = new Date().getTime();
+      console.log('Загрузка товаров для магазина:', shop.id);
+
+      // Добавляем параметр status=all для получения всех товаров
+      const response = await fetch(
+        `/api/shops/${shop.id}/products?t=${timestamp}&status=all`,
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Загружено товаров:', data.length);
+        setProducts(data);
+      } else {
+        console.error('Ошибка загрузки товаров:', await response.text());
+      }
     } catch (error) {
       console.error('Ошибка загрузки товаров:', error);
     } finally {
@@ -797,15 +954,15 @@ export default function ShopContent({
     <div className='min-h-screen bg-background'>
       {/* Фиксированная строка поиска */}
       <SearchBar onSearch={setSearchQuery} />
-
       {/* Фиксированные категории */}
+      {/* Фиксированные категории */}
+      // В ShopContent.tsx замените вызов CategoryFilter на:
       <CategoryFilter
-        categories={categories}
+        categories={prepareCategoriesForFilter(categories)}
         selectedCategory={selectedCategory}
         selectedSubcategory={selectedSubcategory}
         onCategorySelect={handleCategorySelect}
       />
-
       {/* Основной контент */}
       <div className='pt-[96px] pb-24 px-4 max-w-md mx-auto'>
         {/* Заголовок магазина */}
@@ -858,7 +1015,6 @@ export default function ShopContent({
           </div>
         )}
       </div>
-
       {/* Фиксированная корзина внизу */}
       <FixedCartBar
         itemCount={getTotalItems()}
@@ -867,7 +1023,6 @@ export default function ShopContent({
         onCheckoutClick={() => setCurrentView('order')}
         isVisible={items.length > 0}
       />
-
       {/* Модальное окно товара */}
       <ProductModal
         product={selectedProduct}
@@ -877,7 +1032,6 @@ export default function ShopContent({
         cartQuantity={selectedProduct ? getItemQuantity(selectedProduct.id) : 0}
         onGoToCart={() => setCurrentView('cart')}
       />
-
       <Toaster position='top-center' />
       <TelegramShopDebug />
     </div>
