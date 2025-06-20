@@ -230,6 +230,22 @@ export async function processMessage(text: string, chatId: number, user: any) {
     await processSupportMessage(text, chatId, user);
     return;
   }
+
+  // Обработка кнопки "Поддержка"
+  if (text === 'Поддержка') {
+    return await handleSupport(chatId);
+  }
+
+  // Обработка кнопки "Мои заказы"
+  if (text === 'Мои заказы') {
+    return await handleUserOrders(chatId, chatId);
+  }
+
+  // Обработка кнопки "Справка"
+  if (text === 'Справка') {
+    return await handleHelp(chatId, false);
+  }
+
   // Обработка кнопки "Перейти в магазин"
   if (text === 'Перейти в магазин') {
     const shop = await getUserShop(user.id);
@@ -260,6 +276,7 @@ export async function processMessage(text: string, chatId: number, user: any) {
     );
   }
 }
+
 const USER_ORDERS_PER_PAGE = 3;
 // Обработчик для просмотра заказов пользователя
 async function handleUserOrders(
