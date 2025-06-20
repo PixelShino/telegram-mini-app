@@ -17,13 +17,18 @@ import {
   ShoppingCart,
   ChevronLeft,
   ChevronRight,
+  AlertCircle,
 } from 'lucide-react';
 import type { Product } from '@/types/product';
 
 interface ProductModalProps {
   product: Product | null;
   onClose: () => void;
-  onAddToCart: (product: Product, quantity: number) => void;
+  onAddToCart: (
+    product: Product,
+    quantity: number,
+    singleOrder?: boolean,
+  ) => void;
   isTelegram: boolean;
   cartQuantity?: number;
   onGoToCart: () => void;
@@ -120,6 +125,21 @@ export default function ProductModal({
         </DialogHeader>
 
         <div className='space-y-4'>
+          {/* Предупреждение об индивидуальном заказе */}
+          {product.single_order_only && (
+            <div className='p-3 mb-4 border border-orange-200 rounded-lg bg-orange-50'>
+              <div className='flex items-center gap-2'>
+                <AlertCircle className='w-4 h-4 text-orange-600' />
+                <span className='text-sm font-medium text-orange-800'>
+                  Товар требует индивидуальной обработки
+                </span>
+              </div>
+              <p className='mt-1 text-xs text-orange-600'>
+                Этот товар нельзя заказать вместе с другими товарами
+              </p>
+            </div>
+          )}
+
           {/* Слайдер изображений товара */}
           <div className='relative overflow-hidden rounded-lg aspect-square bg-muted'>
             <div className='overflow-hidden embla' ref={emblaRef}>
@@ -182,35 +202,39 @@ export default function ProductModal({
               </div>
             )}
 
-            {/* Селектор количества */}
-            <div className='space-y-3'>
-              <h4 className='font-semibold'>Количество</h4>
-              <div className='flex items-center justify-center gap-4'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => handleQuantityChange(-1)}
-                  className='w-10 h-10 p-0'
-                  disabled={quantity <= 1 && cartQuantity === 0} // Отключаем, если товар не в корзине и количество = 1
-                >
-                  <Minus className='w-4 h-4' />
-                </Button>
+            {/* Селектор количества - скрываем для индивидуальных заказов */}
+            {!product.single_order_only && (
+              <div className='space-y-3'>
+                <h4 className='font-semibold'>Количество</h4>
+                <div className='flex items-center justify-center gap-4'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => handleQuantityChange(-1)}
+                    className='w-10 h-10 p-0'
+                    disabled={quantity <= 1 && cartQuantity === 0}
+                  >
+                    <Minus className='w-4 h-4' />
+                  </Button>
 
-                <span className='w-12 text-xl font-semibold text-center'>
-                  {cartQuantity > 0 ? cartQuantity : quantity}
-                </span>
+                  <span className='w-12 text-xl font-semibold text-center'>
+                    {cartQuantity > 0 ? cartQuantity : quantity}
+                  </span>
 
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => handleQuantityChange(1)}
-                  className='w-10 h-10 p-0'
-                  disabled={!product.allow_quantity_change && cartQuantity >= 1}
-                >
-                  <Plus className='w-4 h-4' />
-                </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => handleQuantityChange(1)}
+                    className='w-10 h-10 p-0'
+                    disabled={
+                      !product.allow_quantity_change && cartQuantity >= 1
+                    }
+                  >
+                    <Plus className='w-4 h-4' />
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Итоговая стоимость и кнопка */}
             <div className='pt-4 space-y-3 border-t'>
@@ -220,7 +244,10 @@ export default function ProductModal({
                   variant='default'
                   className='px-3 py-1 text-lg font-bold'
                 >
-                  {(product.price * quantity).toLocaleString()} ₽
+                  {(
+                    product.price * (product.single_order_only ? 1 : quantity)
+                  ).toLocaleString()}{' '}
+                  ₽
                 </Badge>
               </div>
 
@@ -237,10 +264,22 @@ export default function ProductModal({
                   Перейти в корзину
                 </Button>
               ) : (
-                // Если товара нет в корзине, показываем кнопку "Добавить в корзину"
-                <Button onClick={handleAddToCart} className='w-full h-12'>
+                // Если товара нет в корзине, показываем кнопку добавления
+                <Button
+                  onClick={() => {
+                    if (product.single_order_only) {
+                      onAddToCart(product, 1, true);
+                      onGoToCart(); // Сразу переходим в корзину
+                    } else {
+                      handleAddToCart();
+                    }
+                  }}
+                  className='w-full h-12'
+                >
                   <ShoppingCart className='w-4 h-4 mr-2' />
-                  Добавить в корзину
+                  {product.single_order_only
+                    ? 'Заказать индивидуально'
+                    : 'Добавить в корзину'}
                 </Button>
               )}
             </div>

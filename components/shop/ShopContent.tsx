@@ -15,6 +15,7 @@ import {
   ShoppingBag,
   Package,
   CheckCircle,
+  AlertCircle,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import type { Shop } from '@/types/shop';
@@ -29,17 +30,18 @@ import FixedCartBar from './FixedCartBar';
 import ProductCard from './ProductCard';
 import CartAddons from './CartAddons';
 import TelegramShopDebug from './TelegramShopDebug';
+import { useCartStore } from '@/src/stores/cartStore';
 
-interface CartState {
-  items: CartItem[];
-  addItem: (product: Product, quantity?: number) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
-  getTotalPrice: () => number;
-  getTotalItems: () => number;
-  getItemQuantity: (productId: string) => number;
-  clearCart: () => void;
-}
+// interface CartState {
+//   items: CartItem[];
+//   addItem: (product: Product, quantity?: number) => void;
+//   removeItem: (productId: string) => void;
+//   updateQuantity: (productId: string, quantity: number) => void;
+//   getTotalPrice: () => number;
+//   getTotalItems: () => number;
+//   getItemQuantity: (productId: string) => number;
+//   clearCart: () => void;
+// }
 interface Category {
   id: number | string;
   name: string;
@@ -52,62 +54,62 @@ interface Category {
   children?: Category[];
 }
 
-const useCartStore = create<CartState>()(
-  persist(
-    (set, get) => ({
-      items: [],
-      addItem: (product, quantity = 1) =>
-        set((state) => {
-          const existingItem = state.items.find(
-            (item) => item.product.id === product.id,
-          );
-          if (existingItem) {
-            return {
-              items: state.items.map((item) =>
-                item.product.id === product.id
-                  ? { ...item, quantity: item.quantity + quantity }
-                  : item,
-              ),
-            };
-          }
-          return { items: [...state.items, { product, quantity }] };
-        }),
-      removeItem: (productId) =>
-        set((state) => ({
-          items: state.items.filter((item) => item.product.id !== productId),
-        })),
-      updateQuantity: (productId, quantity) =>
-        set((state) => ({
-          items:
-            quantity <= 0
-              ? state.items.filter((item) => item.product.id !== productId)
-              : state.items.map((item) =>
-                  item.product.id === productId ? { ...item, quantity } : item,
-                ),
-        })),
-      getTotalPrice: () => {
-        const { items } = get();
-        return items.reduce(
-          (total, item) => total + item.product.price * item.quantity,
-          0,
-        );
-      },
-      getTotalItems: () => {
-        const { items } = get();
-        return items.reduce((total, item) => total + item.quantity, 0);
-      },
-      getItemQuantity: (productId) => {
-        const { items } = get();
-        const item = items.find((item) => item.product.id === productId);
-        return item ? item.quantity : 0;
-      },
-      clearCart: () => set({ items: [] }),
-    }),
-    {
-      name: 'cart-storage',
-    },
-  ),
-);
+// const useCartStore = create<CartState>()(
+//   persist(
+//     (set, get) => ({
+//       items: [],
+//       addItem: (product, quantity = 1) =>
+//         set((state) => {
+//           const existingItem = state.items.find(
+//             (item) => item.product.id === product.id,
+//           );
+//           if (existingItem) {
+//             return {
+//               items: state.items.map((item) =>
+//                 item.product.id === product.id
+//                   ? { ...item, quantity: item.quantity + quantity }
+//                   : item,
+//               ),
+//             };
+//           }
+//           return { items: [...state.items, { product, quantity }] };
+//         }),
+//       removeItem: (productId) =>
+//         set((state) => ({
+//           items: state.items.filter((item) => item.product.id !== productId),
+//         })),
+//       updateQuantity: (productId, quantity) =>
+//         set((state) => ({
+//           items:
+//             quantity <= 0
+//               ? state.items.filter((item) => item.product.id !== productId)
+//               : state.items.map((item) =>
+//                   item.product.id === productId ? { ...item, quantity } : item,
+//                 ),
+//         })),
+//       getTotalPrice: () => {
+//         const { items } = get();
+//         return items.reduce(
+//           (total, item) => total + item.product.price * item.quantity,
+//           0,
+//         );
+//       },
+//       getTotalItems: () => {
+//         const { items } = get();
+//         return items.reduce((total, item) => total + item.quantity, 0);
+//       },
+//       getItemQuantity: (productId) => {
+//         const { items } = get();
+//         const item = items.find((item) => item.product.id === productId);
+//         return item ? item.quantity : 0;
+//       },
+//       clearCart: () => set({ items: [] }),
+//     }),
+//     {
+//       name: 'cart-storage',
+//     },
+//   ),
+// );
 
 interface ShopContentProps {
   shop: Shop;
@@ -122,7 +124,7 @@ export default function ShopContent({
   isTelegram,
 }: ShopContentProps) {
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  // const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState<'products' | 'cart' | 'order'>(
     'products',
   );
@@ -134,12 +136,22 @@ export default function ShopContent({
   );
   const [saveCartInProgress, setSaveCartInProgress] = useState(false);
   const saveCartTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [isLoadingCart, setIsLoadingCart] = useState(false);
+
+  const [isProcessingCart, setIsProcessingCart] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [loadingStates, setLoadingStates] = useState({
+    products: true,
+    categories: true,
+    cart: false,
+  });
 
   const {
     items,
     addItem,
     removeItem,
     updateQuantity,
+    setItemQuantity,
     getTotalPrice,
     getTotalItems,
     getItemQuantity,
@@ -225,8 +237,8 @@ export default function ShopContent({
     });
   };
   // Функция для преобразования категорий из базы данных в формат для CategoryFilter
-  // Функция для преобразования категорий из базы данных в формат для CategoryFilter
-  const prepareCategoriesForFilter = (categories: Category[]) => {
+
+  const prepareCategoriesForFilter = useMemo(() => {
     console.log('Исходные категории:', categories);
     console.log('Товары:', products);
 
@@ -277,72 +289,7 @@ export default function ShopContent({
 
     console.log('Отфильтрованное дерево категорий:', filteredTree);
     return filteredTree;
-  };
-
-  // Компонент для отображения категорий
-  // const CategoryMenu = () => {
-  //   const categoryTree = buildCategoryTree(categories);
-
-  //   return (
-  //     <div className='space-y-2'>
-  //       <h3 className='font-medium'>Категории</h3>
-  //       <div className='space-y-1'>
-  //         <Button
-  //           variant={selectedCategory === null ? 'default' : 'outline'}
-  //           size='sm'
-  //           className='justify-start w-full'
-  //           onClick={() => handleCategorySelect(null)}
-  //         >
-  //           Все товары
-  //         </Button>
-
-  //         {categoryTree.map((category) => (
-  //           <div key={category.id} className='space-y-1'>
-  //             <Button
-  //               variant={
-  //                 selectedCategory === category.id.toString()
-  //                   ? 'default'
-  //                   : 'outline'
-  //               }
-  //               size='sm'
-  //               className='justify-start w-full'
-  //               onClick={() => handleCategorySelect(category.id.toString())}
-  //             >
-  //               {category.name}
-  //             </Button>
-
-  //             {selectedCategory === category.id.toString() &&
-  //               category.children &&
-  //               category.children.length > 0 && (
-  //                 <div className='pl-4 space-y-1'>
-  //                   {category.children.map((subcat) => (
-  //                     <Button
-  //                       key={subcat.id}
-  //                       variant={
-  //                         selectedSubcategory === subcat.id.toString()
-  //                           ? 'default'
-  //                           : 'ghost'
-  //                       }
-  //                       size='sm'
-  //                       className='justify-start w-full'
-  //                       onClick={() =>
-  //                         handleCategorySelect(
-  //                           category.id.toString(),
-  //                           subcat.id.toString(),
-  //                         )
-  //                       }
-  //                     >
-  //                       {subcat.name}
-  //                     </Button>
-  //                   ))}
-  //                 </div>
-  //               )}
-  //           </div>
-  //         ))}
-  //       </div>
-  //     </div>
-  //   );
-  // };
+  }, [categories, products]); // Зависимости для useMemo
 
   useEffect(() => {
     fetchProducts();
@@ -398,6 +345,16 @@ export default function ShopContent({
     }
   }, [isTelegram]);
 
+  useEffect(() => {
+    const allLoaded =
+      !loadingStates.products &&
+      !loadingStates.categories &&
+      !loadingStates.cart;
+    if (allLoaded && isInitialLoading) {
+      setIsInitialLoading(false);
+    }
+  }, [loadingStates, isInitialLoading]);
+
   // Функция для сохранения данных пользователя из Telegram
   const saveTelegramUserData = async (tgUser: any) => {
     try {
@@ -423,6 +380,7 @@ export default function ShopContent({
     }
   };
   const fetchCategories = async () => {
+    setLoadingStates((prev) => ({ ...prev, categories: true }));
     try {
       console.log('Загрузка категорий для магазина:', shop.id);
       const response = await fetch(`/api/shops/${shop.id}/categories`);
@@ -430,12 +388,11 @@ export default function ShopContent({
         const data = await response.json();
         console.log('Загружено категорий:', data.length, data);
 
-        // Проверяем, что данные действительно являются категориями
         const validCategories = data.filter(
           (item: any) =>
             item.hasOwnProperty('name') &&
             item.hasOwnProperty('id') &&
-            !item.hasOwnProperty('price'), // товары имеют поле price
+            !item.hasOwnProperty('price'),
         );
 
         console.log('Валидные категории:', validCategories);
@@ -445,16 +402,17 @@ export default function ShopContent({
       }
     } catch (error) {
       console.error('Ошибка загрузки категорий:', error);
+    } finally {
+      setLoadingStates((prev) => ({ ...prev, categories: false }));
     }
   };
 
   const fetchProducts = async () => {
-    setLoading(true);
+    setLoadingStates((prev) => ({ ...prev, products: true }));
     try {
       const timestamp = new Date().getTime();
       console.log('Загрузка товаров для магазина:', shop.id);
 
-      // Добавляем параметр status=all для получения всех товаров
       const response = await fetch(
         `/api/shops/${shop.id}/products?t=${timestamp}&status=all`,
       );
@@ -469,51 +427,256 @@ export default function ShopContent({
     } catch (error) {
       console.error('Ошибка загрузки товаров:', error);
     } finally {
-      setLoading(false);
+      setLoadingStates((prev) => ({ ...prev, products: false }));
+      // setLoading(false);
+    }
+  };
+  const clearCartFromDatabase = async () => {
+    let telegram_id = telegramUser?.id;
+
+    if (
+      isTelegram &&
+      typeof window !== 'undefined' &&
+      window.Telegram?.WebApp?.initDataUnsafe?.user
+    ) {
+      telegram_id = window.Telegram.WebApp.initDataUnsafe.user.id;
+    }
+
+    if (!telegram_id) return;
+
+    try {
+      // Используем DELETE метод для быстрой очистки всей корзины
+      const response = await fetch(`/api/cart`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          telegram_id: Number(telegram_id),
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('Ошибка при очистке корзины:', await response.text());
+      }
+    } catch (error) {
+      console.error('Ошибка при очистке корзины в базе данных:', error);
     }
   };
 
-  const handleAddToCart = (product: Product, quantity = 1) => {
-    if (quantity > 0) {
-      // Если quantity положительное, добавляем или увеличиваем количество
-      const currentQuantity = getItemQuantity(product.id);
-      const newQuantity = currentQuantity + quantity;
+  const showConfirmationToast = (
+    message: string,
+    onConfirm: () => void,
+    onCancel?: () => void,
+    confirmText = 'Да',
+    cancelText = 'Нет',
+  ) => {
+    const toastId = toast.custom(
+      (t) => (
+        <Card className='max-w-sm mx-auto shadow-lg'>
+          <CardContent className='p-4'>
+            <div className='space-y-4'>
+              <div className='flex items-start gap-3'>
+                <AlertCircle className='w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0' />
+                <p className='text-sm leading-relaxed text-gray-700'>
+                  {message}
+                </p>
+              </div>
+              <div className='flex justify-end gap-2'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => {
+                    toast.dismiss(toastId);
+                    onCancel?.();
+                  }}
+                >
+                  {cancelText}
+                </Button>
+                <Button
+                  size='sm'
+                  onClick={() => {
+                    toast.dismiss(toastId);
+                    onConfirm();
+                  }}
+                >
+                  {confirmText}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ),
+      {
+        duration: Infinity, // Не исчезает автоматически
+        position: 'top-center',
+      },
+    );
+  };
+  const handleAddToCart = async (
+    product: Product,
+    quantity = 1,
+    singleOrder = false,
+  ) => {
+    // Блокируем ВСЕ операции с корзиной во время обработки
+    if (isInitialLoading || isProcessingCart) {
+      return;
+    }
 
-      // Обновляем локальное состояние
-      if (currentQuantity === 0) {
-        addItem(product, quantity);
-      } else {
-        updateQuantity(product.id, newQuantity);
-      }
+    // Проверяем, есть ли в корзине товары, требующие индивидуальной обработки
+    const hasSingleOrderItems = items.some(
+      (item) => item.product.single_order_only,
+    );
+    const hasRegularItems = items.some(
+      (item) => !item.product.single_order_only,
+    );
 
-      // Сохраняем в базе данных АБСОЛЮТНОЕ значение
-      saveCartToDatabase(product, newQuantity);
-
-      toast.success(`${product.name} добавлен в корзину`, {
-        icon: <ShoppingBag className='w-4 h-4' />,
-        duration: 2000,
-      });
-    } else {
-      // Если quantity отрицательное, уменьшаем
-      const currentQuantity = getItemQuantity(product.id);
-      const newQuantity = currentQuantity + quantity;
-
-      if (newQuantity <= 0) {
-        // Удаляем товар
+    if (product.single_order_only || singleOrder) {
+      // Для индивидуальных заказов разрешаем изменение количества только если allow_quantity_change = true
+      if (quantity < 0) {
+        // Удаляем товар полностью
         removeItem(product.id);
-        // Удаляем из базы данных (отправляем 0 для удаления)
         saveCartToDatabase(product, 0);
-
         toast.success(`${product.name} удален из корзины`, {
           icon: <Trash2 className='w-4 h-4' />,
           duration: 2000,
         });
-      } else {
-        // Обновляем количество
-        updateQuantity(product.id, newQuantity);
-        // Обновляем в базе данных АБСОЛЮТНОЕ значение
-        saveCartToDatabase(product, newQuantity);
+        return;
       }
+
+      // Если в корзине есть обычные товары, спрашиваем подтверждение
+      if (hasRegularItems) {
+        showConfirmationToast(
+          `В корзине есть обычные товары. Для добавления индивидуального заказа нужно очистить корзину.\n\nРекомендуем сначала оформить заказ с текущими товарами, а затем добавить индивидуальный товар.\n\nОчистить корзину и добавить "${product.name}"?`,
+          async () => {
+            // Блокируем ВСЕ операции с корзиной
+            setIsProcessingCart(true);
+
+            try {
+              if (hasSingleOrderItems) {
+                clearCart();
+                await clearCartFromDatabase();
+
+                toast.success('Корзина очищена для индивидуального заказа', {
+                  icon: <ShoppingBag className='w-4 h-4' />,
+                  duration: 2000,
+                });
+              }
+
+              // Для индивидуальных заказов добавляем указанное количество, если allow_quantity_change = true
+              const quantityToAdd = product.allow_quantity_change
+                ? quantity
+                : 1;
+              addItem(product, quantityToAdd);
+              saveCartToDatabase(product, quantityToAdd);
+
+              toast.success(
+                `${product.name} добавлен для индивидуального заказа`,
+                {
+                  icon: <ShoppingBag className='w-4 h-4' />,
+                  duration: 2000,
+                },
+              );
+            } finally {
+              setIsProcessingCart(false);
+            }
+            return;
+          },
+          () => {
+            // Отмена - предлагаем оформить заказ
+            showConfirmationToast(
+              'Хотите оформить заказ с текущими товарами?',
+              () => {
+                setCurrentView('order');
+              },
+              undefined,
+              'Оформить заказ',
+              'Отмена',
+            );
+          },
+          'Очистить корзину',
+          'Отмена',
+        );
+        return;
+      }
+
+      // Блокируем операции
+      setIsProcessingCart(true);
+
+      try {
+        if (hasSingleOrderItems) {
+          // Очищаем корзину в интерфейсе и базе данных
+          clearCart();
+          await clearCartFromDatabase();
+
+          toast.success('Корзина очищена для индивидуального заказа', {
+            icon: <ShoppingBag className='w-4 h-4' />,
+            duration: 2000,
+          });
+        }
+
+        addItem(product, 1); // Всегда добавляем только 1 штуку для индивидуальных заказов
+        saveCartToDatabase(product, 1);
+        toast.success(`${product.name} добавлен для индивидуального заказа`, {
+          icon: <ShoppingBag className='w-4 h-4' />,
+          duration: 2000,
+        });
+      } finally {
+        // Разблокируем операции
+        setIsProcessingCart(false);
+      }
+      return;
+    }
+
+    // Проверяем, можно ли добавить обычный товар
+    if (hasSingleOrderItems) {
+      toast.error('Нельзя добавить обычный товар к индивидуальному заказу', {
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Блокируем операции для обычных товаров тоже
+    setIsProcessingCart(true);
+
+    try {
+      // Обычная логика для обычных товаров
+      if (quantity > 0) {
+        const currentQuantity = getItemQuantity(product.id);
+        const newQuantity = currentQuantity + quantity;
+
+        if (currentQuantity === 0) {
+          addItem(product, quantity);
+        } else {
+          updateQuantity(product.id, newQuantity);
+        }
+
+        saveCartToDatabase(product, newQuantity);
+
+        toast.success(`${product.name} добавлен в корзину`, {
+          icon: <ShoppingBag className='w-4 h-4' />,
+          duration: 2000,
+        });
+      } else {
+        const currentQuantity = getItemQuantity(product.id);
+        const newQuantity = currentQuantity + quantity;
+
+        if (newQuantity <= 0) {
+          removeItem(product.id);
+          saveCartToDatabase(product, 0);
+
+          toast.success(`${product.name} удален из корзины`, {
+            icon: <Trash2 className='w-4 h-4' />,
+            duration: 2000,
+          });
+        } else {
+          updateQuantity(product.id, newQuantity);
+          saveCartToDatabase(product, newQuantity);
+        }
+      }
+    } finally {
+      // Разблокируем операции
+      setIsProcessingCart(false);
     }
   };
 
@@ -612,7 +775,72 @@ export default function ShopContent({
     }
   };
 
-  // Добавьте эту функцию после объявления других функций
+  const loadCartFromDatabase = async () => {
+    let telegram_id = telegramUser?.id;
+
+    if (
+      isTelegram &&
+      typeof window !== 'undefined' &&
+      window.Telegram?.WebApp?.initDataUnsafe?.user
+    ) {
+      telegram_id = window.Telegram.WebApp.initDataUnsafe.user.id;
+    }
+
+    if (!telegram_id) return;
+
+    if (isLoadingCart) return;
+    setIsLoadingCart(true);
+    setLoadingStates((prev) => ({ ...prev, cart: true }));
+
+    try {
+      const response = await fetch(
+        `/api/cart?telegram_id=${Number(telegram_id)}`,
+      );
+
+      if (response.ok) {
+        const cartData = await response.json();
+        clearCart();
+
+        for (const item of cartData) {
+          try {
+            const productResponse = await fetch(
+              `/api/products/${item.product_id}`,
+            );
+            if (productResponse.ok) {
+              const productData = await productResponse.json();
+              if (productData && productData.status === 'active') {
+                setItemQuantity(productData, item.quantity);
+              } else {
+                toast.error(
+                  `Товар "${item.products?.name || 'Неизвестный товар'}" больше недоступен и был удален из корзины`,
+                  {
+                    duration: 4000,
+                  },
+                );
+
+                await fetch(`/api/cart/${item.id}`, {
+                  method: 'DELETE',
+                });
+              }
+            }
+          } catch (productError) {
+            console.error(
+              'Ошибка при загрузке информации о товаре:',
+              productError,
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке корзины:', error);
+      toast.error('Не удалось загрузить сохраненную корзину', {
+        duration: 3000,
+      });
+    } finally {
+      setIsLoadingCart(false);
+      setLoadingStates((prev) => ({ ...prev, cart: false }));
+    }
+  };
   const saveCartToDatabase = async (product: Product, quantity: number) => {
     // Получаем telegram_id напрямую из Telegram WebApp, если доступно
     let telegram_id = telegramUser?.id;
@@ -659,91 +887,16 @@ export default function ShopContent({
     }
   };
 
-  const loadCartFromDatabase = async () => {
-    let telegram_id = telegramUser?.id;
-
-    if (
-      isTelegram &&
-      typeof window !== 'undefined' &&
-      window.Telegram?.WebApp?.initDataUnsafe?.user
-    ) {
-      telegram_id = window.Telegram.WebApp.initDataUnsafe.user.id;
-    }
-
-    if (!telegram_id) return;
-
-    try {
-      const response = await fetch(
-        `/api/cart?telegram_id=${Number(telegram_id)}`,
-      );
-
-      if (response.ok) {
-        const cartData = await response.json();
-
-        // Очищаем текущую корзину перед загрузкой
-        clearCart();
-
-        // Загружаем товары из базы данных
-        for (const item of cartData) {
-          // Получаем полную информацию о товаре из базы данных
-          try {
-            const productResponse = await fetch(
-              `/api/products/${item.product_id}`,
-            );
-            if (productResponse.ok) {
-              const productData = await productResponse.json();
-              // Добавляем товар в корзину только если он доступен
-              if (productData && productData.status === 'active') {
-                addItem(productData, item.quantity);
-              } else {
-                // Товар недоступен, уведомляем пользователя
-                toast.error(
-                  `Товар "${item.products?.name || 'Неизвестный товар'}" больше недоступен и был удален из корзины`,
-                  {
-                    duration: 4000,
-                  },
-                );
-
-                // Удаляем недоступный товар из сохраненной корзины
-                await fetch(`/api/cart/${item.id}`, {
-                  method: 'DELETE',
-                });
-              }
-            } else {
-              // Не удалось получить информацию о товаре
-              toast.error(
-                `Не удалось загрузить информацию о товаре из корзины`,
-                {
-                  duration: 3000,
-                },
-              );
-            }
-          } catch (productError) {
-            console.error(
-              'Ошибка при загрузке информации о товаре:',
-              productError,
-            );
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Ошибка при загрузке корзины:', error);
-      toast.error('Не удалось загрузить сохраненную корзину', {
-        duration: 3000,
-      });
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className='flex items-center justify-center min-h-screen bg-background'>
-        <div className='space-y-4 text-center'>
-          <Store className='w-16 h-16 mx-auto text-muted-foreground' />
-          <p className='text-muted-foreground'>Загрузка товаров...</p>
-        </div>
-      </div>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <div className='flex items-center justify-center min-h-screen bg-background'>
+  //       <div className='space-y-4 text-center'>
+  //         <Store className='w-16 h-16 mx-auto text-muted-foreground' />
+  //         <p className='text-muted-foreground'>Загрузка товаров...</p>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   if (currentView === 'order') {
     return (
@@ -797,11 +950,38 @@ export default function ShopContent({
             </div>
           ) : (
             <div className='space-y-4'>
+              {/* Предупреждение об индивидуальном заказе */}
+              {items.some((item) => item.product.single_order_only) && (
+                <div className='p-3 mb-4 border border-orange-200 rounded-lg bg-orange-50'>
+                  <div className='flex items-center gap-2'>
+                    <AlertCircle className='w-4 h-4 text-orange-600' />
+                    <span className='text-sm font-medium text-orange-800'>
+                      Индивидуальный заказ
+                    </span>
+                  </div>
+                  <p className='text-xs text-orange-600'>
+                    В корзине товар, требующий индивидуальной обработки
+                  </p>
+                </div>
+              )}
+
               {/* Список товаров в корзине */}
               <div className='space-y-3'>
                 {items.map(({ product, quantity }) => (
-                  <Card key={product.id}>
-                    <CardContent className='p-4'>
+                  <Card key={product.id} className='relative'>
+                    {product.single_order_only && (
+                      <div className='absolute z-10 top-2 left-2'>
+                        <Badge
+                          variant='secondary'
+                          className='text-xs text-orange-800 bg-orange-100'
+                        >
+                          Индивидуальный
+                        </Badge>
+                      </div>
+                    )}
+                    <CardContent
+                      className={`p-4 ${product.single_order_only ? 'pt-8' : ''}`}
+                    >
                       <div className='flex items-center gap-4'>
                         <div className='flex-shrink-0 w-16 h-16 overflow-hidden rounded-lg bg-muted'>
                           <img
@@ -824,41 +1004,41 @@ export default function ShopContent({
                         </div>
 
                         <div className='flex flex-col items-end gap-2'>
-                          <div className='flex items-center gap-2'>
-                            <Button
-                              variant='outline'
-                              size='sm'
-                              onClick={() => {
-                                if (quantity <= 1) {
-                                  removeItem(product.id);
-                                  saveCartToDatabase(product, 0);
-                                  toast.success(
-                                    `${product.name} удален из корзины`,
-                                    {
-                                      icon: <Trash2 className='w-4 h-4' />,
-                                      duration: 2000,
-                                    },
-                                  );
-                                } else {
-                                  updateQuantity(product.id, quantity - 1);
-                                  saveCartToDatabase(product, quantity - 1);
-                                }
-                              }}
-                              className='w-8 h-8 p-0'
-                            >
-                              <Minus className='w-3 h-3' />
-                            </Button>
-                            <span className='w-8 text-sm font-medium text-center'>
-                              {quantity}
-                            </span>
-                            <Button
-                              variant='outline'
-                              size='sm'
-                              onClick={() => {
-                                if (
-                                  product.allow_quantity_change ||
-                                  quantity === 0
-                                ) {
+                          {/* Скрываем селектор количества для индивидуальных заказов */}
+                          {(!product.single_order_only ||
+                            (product.single_order_only &&
+                              product.allow_quantity_change)) && (
+                            <div className='flex items-center gap-2'>
+                              <Button
+                                variant='outline'
+                                size='sm'
+                                onClick={() => {
+                                  if (quantity <= 1) {
+                                    removeItem(product.id);
+                                    saveCartToDatabase(product, 0);
+                                    toast.success(
+                                      `${product.name} удален из корзины`,
+                                      {
+                                        icon: <Trash2 className='w-4 h-4' />,
+                                        duration: 2000,
+                                      },
+                                    );
+                                  } else {
+                                    updateQuantity(product.id, quantity - 1);
+                                    saveCartToDatabase(product, quantity - 1);
+                                  }
+                                }}
+                                className='w-8 h-8 p-0'
+                              >
+                                <Minus className='w-3 h-3' />
+                              </Button>
+                              <span className='w-8 text-sm font-medium text-center'>
+                                {quantity}
+                              </span>
+                              <Button
+                                variant='outline'
+                                size='sm'
+                                onClick={() => {
                                   updateQuantity(product.id, quantity + 1);
                                   saveCartToDatabase(product, quantity + 1);
                                   toast.success(
@@ -868,18 +1048,23 @@ export default function ShopContent({
                                       duration: 2000,
                                     },
                                   );
-                                } else {
-                                  console.log(product.allow_quantity_change);
-                                }
-                              }}
-                              className='w-8 h-8 p-0'
-                              disabled={
-                                !product.allow_quantity_change && quantity >= 1
-                              }
-                            >
-                              <Plus className='w-3 h-3' />
-                            </Button>
-                          </div>
+                                }}
+                                className='w-8 h-8 p-0'
+                              >
+                                <Plus className='w-3 h-3' />
+                              </Button>
+                            </div>
+                          )}
+
+                          {/* Если индивидуальный заказ БЕЗ allow_quantity_change - показываем только количество */}
+                          {product.single_order_only &&
+                            !product.allow_quantity_change && (
+                              <div className='flex items-center justify-center py-1'>
+                                <Badge variant='outline' className='text-sm'>
+                                  Количество: {quantity}
+                                </Badge>
+                              </div>
+                            )}
 
                           <div className='text-right'>
                             <div className='font-bold'>
@@ -911,13 +1096,15 @@ export default function ShopContent({
                 ))}
               </div>
 
-              {/* Дополнения к заказу */}
-              <CartAddons
-                shopId={shop.id}
-                cartItems={items}
-                onAddToCart={handleAddToCart}
-                getItemQuantity={getItemQuantity}
-              />
+              {/* Дополнения к заказу - скрываем для индивидуальных заказов */}
+              {!items.some((item) => item.product.single_order_only) && (
+                <CartAddons
+                  shopId={shop.id}
+                  cartItems={items}
+                  onAddToCart={handleAddToCart}
+                  getItemQuantity={getItemQuantity}
+                />
+              )}
 
               {/* Итого */}
               <Card>
@@ -950,6 +1137,87 @@ export default function ShopContent({
     );
   }
 
+  // if (isInitialLoading) {
+  //   return (
+  //     <div className='flex items-center justify-center min-h-screen bg-background'>
+  //       <div className='space-y-4 text-center'>
+  //         <div className='w-16 h-16 mx-auto border-b-2 rounded-full animate-spin border-primary'></div>
+  //         <p className='text-lg font-semibold'>Загрузка магазина...</p>
+  //       </div>
+  //     </div>
+  //   );
+  // }
+  if (isInitialLoading) {
+    return (
+      <div className='flex flex-col items-center justify-center min-h-screen bg-background'>
+        {/* Пульсирующий спиннер с вращающимися волнами */}
+        <div className='relative flex items-center justify-center w-32 h-32 mb-8'>
+          {/* Центральный круг */}
+          <div className='absolute z-10 w-6 h-6 bg-black rounded-full'></div>
+
+          {/* Волны с вращением */}
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              className='absolute border-2 border-black rounded-full'
+              style={{
+                width: `${20 + i * 20}px`,
+                height: `${20 + i * 20}px`,
+                animation: `pulse 1.5s infinite, rotate ${4 - i * 0.5}s infinite linear`,
+                animationDelay: `${i * 0.2}s`,
+                opacity: 0.7 - i * 0.15,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Текст с эффектом печатной машинки */}
+        <p className='overflow-hidden text-xl font-bold tracking-wider border-r-2 border-black whitespace-nowrap animate-typing'>
+          Загрузка магазина...
+        </p>
+
+        {/* Анимации */}
+        <style jsx>{`
+          @keyframes pulse {
+            0% {
+              transform: scale(0.8);
+              opacity: 0.5;
+            }
+            50% {
+              transform: scale(1.2);
+              opacity: 0.2;
+            }
+            100% {
+              transform: scale(0.8);
+              opacity: 0.5;
+            }
+          }
+          @keyframes rotate {
+            0% {
+              transform: rotate(0deg) scale(0.8);
+            }
+            50% {
+              transform: rotate(180deg) scale(1.2);
+            }
+            100% {
+              transform: rotate(360deg) scale(0.8);
+            }
+          }
+          @keyframes typing {
+            from {
+              width: 0;
+            }
+            to {
+              width: 240px;
+            }
+          }
+          .animate-typing {
+            animation: typing 3s steps(20, end) infinite;
+          }
+        `}</style>
+      </div>
+    );
+  }
   return (
     <div className='min-h-screen bg-background'>
       {/* Фиксированная строка поиска */}
@@ -958,7 +1226,7 @@ export default function ShopContent({
       {/* Фиксированные категории */}
       // В ShopContent.tsx замените вызов CategoryFilter на:
       <CategoryFilter
-        categories={prepareCategoriesForFilter(categories)}
+        categories={prepareCategoriesForFilter}
         selectedCategory={selectedCategory}
         selectedSubcategory={selectedSubcategory}
         onCategorySelect={handleCategorySelect}

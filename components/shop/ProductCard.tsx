@@ -19,7 +19,11 @@ import type { Product } from '@/types/product';
 interface ProductCardProps {
   product: Product;
   onProductClick: (product: Product) => void;
-  onAddToCart: (product: Product, quantity: number) => void;
+  onAddToCart: (
+    product: Product,
+    quantity: number,
+    singleOrder?: boolean,
+  ) => void;
   cartQuantity: number;
   isTelegram: boolean;
 }
@@ -47,7 +51,13 @@ export default function ProductCard({
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onAddToCart(product, 1);
+
+    if (product.single_order_only) {
+      onAddToCart(product, 1, true);
+    } else {
+      onAddToCart(product, 1);
+    }
+
     if (isTelegram && typeof window !== 'undefined') {
       const tg = (window as any).Telegram.WebApp;
       tg.HapticFeedback.impactOccurred('light');
@@ -88,6 +98,13 @@ export default function ProductCard({
       onClick={() => onProductClick(product)}
       className='cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] relative overflow-hidden'
     >
+      {product.single_order_only && (
+        <div className='absolute z-10 top-2 left-2'>
+          <Badge variant='secondary' className='text-orange-800 bg-orange-100'>
+            Индивидуальный заказ
+          </Badge>
+        </div>
+      )}
       {/* Индикатор товара в корзине */}
       {cartQuantity > 0 && (
         <Badge className='absolute z-10 flex items-center justify-center w-6 h-6 p-0 top-2 right-2'>
@@ -154,7 +171,8 @@ export default function ProductCard({
           </div>
 
           {/* Селектор количества - показываем только если товар в корзине */}
-          {cartQuantity > 0 ? (
+          {/* Селектор количества - показываем только если товар в корзине и НЕ индивидуальный заказ */}
+          {cartQuantity > 0 && !product.single_order_only ? (
             <div className='flex items-center justify-center gap-2 py-1'>
               <Button
                 variant='outline'
@@ -177,10 +195,18 @@ export default function ProductCard({
                 <Plus className='w-3 h-3' />
               </Button>
             </div>
+          ) : cartQuantity > 0 && product.single_order_only ? (
+            /* Для индивидуальных заказов показываем только информацию */
+            <div className='flex items-center justify-center py-1'>
+              <Badge variant='outline' className='text-sm'>
+                В корзине
+              </Badge>
+            </div>
           ) : (
             /* Кнопка добавления в корзину */
             <Button onClick={handleAddToCart} size='sm' className='w-full h-8'>
-              <ShoppingCart className='w-3 h-3 mr-1' />В корзину
+              <ShoppingCart className='w-3 h-3 mr-1' />
+              {product.single_order_only ? 'Заказать' : 'В корзину'}
             </Button>
           )}
         </div>

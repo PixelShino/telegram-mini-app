@@ -17,4 +17,5 @@ export interface Product {
   updated_at: string;
   category_id: number;
   category: string;
+  single_order_only: boolean;
 }

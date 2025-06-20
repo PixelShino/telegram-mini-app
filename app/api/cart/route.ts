@@ -155,3 +155,43 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+//Отчистка корзины
+export async function DELETE(request: NextRequest) {
+  try {
+    const { telegram_id } = await request.json();
+
+    if (!telegram_id) {
+      return NextResponse.json(
+        { error: 'telegram_id is required' },
+        { status: 400 },
+      );
+    }
+
+    const supabase = createClient();
+
+    // Удаляем все товары из корзины пользователя одним запросом
+    const { error } = await supabase
+      .from('cart_items')
+      .delete()
+      .eq('telegram_id', telegram_id);
+
+    if (error) {
+      console.error('Ошибка при очистке корзины:', error);
+      return NextResponse.json(
+        { error: 'Failed to clear cart' },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Ошибка обработки запроса:', error);
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        details: error.message || String(error),
+      },
+      { status: 500 },
+    );
+  }
+}
