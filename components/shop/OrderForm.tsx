@@ -180,12 +180,42 @@ export default function OrderForm({
     }, [user, addressChoice]);
 
     // Временные слоты для доставки
-    const deliveryTimeSlots = [
+
+    const [deliveryOption, setDeliveryOption] = useState<'asap' | 'scheduled'>(
+      'asap',
+    );
+    const [scheduledDate, setScheduledDate] = useState('');
+    const [scheduledTime, setScheduledTime] = useState('');
+
+    const deliveryOptions = [
       { value: 'asap', label: 'Как можно скорее' },
-      { value: 'morning', label: 'Утром (9:00 - 12:00)' },
-      { value: 'afternoon', label: 'Днем (12:00 - 17:00)' },
-      { value: 'evening', label: 'Вечером (17:00 - 21:00)' },
+      { value: 'scheduled', label: 'Указать желаемое время' },
     ];
+    const handleDeliveryOptionChange = (value: string) => {
+      const option = value as 'asap' | 'scheduled';
+      setDeliveryOption(option);
+
+      if (option === 'asap') {
+        setFormData((prev) => ({ ...prev, deliveryTime: 'asap' }));
+      }
+    };
+
+    const handleScheduledDateChange = (date: string) => {
+      setScheduledDate(date);
+      updateScheduledDeliveryTime(date, scheduledTime);
+    };
+
+    const handleScheduledTimeChange = (time: string) => {
+      setScheduledTime(time);
+      updateScheduledDeliveryTime(scheduledDate, time);
+    };
+
+    const updateScheduledDeliveryTime = (date: string, time: string) => {
+      if (date && time) {
+        const deliveryDateTime = `${date} ${time}`;
+        setFormData((prev) => ({ ...prev, deliveryTime: deliveryDateTime }));
+      }
+    };
 
     // Обработка изменения выбора адреса
     const handleAddressChoiceChange = (value: string) => {
@@ -222,6 +252,24 @@ export default function OrderForm({
           console.error('Отсутствуют необходимые данные:', { shop });
           return;
         }
+        if (deliveryOption === 'scheduled') {
+          if (!scheduledDate || !scheduledTime) {
+            toast.error('Пожалуйста, укажите дату и время доставки');
+            setIsSubmitting(false);
+            return;
+          }
+          // Проверяем, что выбранное время не в прошлом
+          const selectedDateTime = new Date(
+            `${scheduledDate}T${scheduledTime}`,
+          );
+          const now = new Date();
+
+          if (selectedDateTime <= now) {
+            toast.error('Время доставки не может быть в прошлом');
+            setIsSubmitting(false);
+            return;
+          }
+        }
 
         // Получаем данные адреса
         const addressData =
@@ -252,7 +300,7 @@ export default function OrderForm({
           telegram_id: Number(telegram_id) || null,
           items: items.map((item) => ({
             product: {
-              id: Number(item.product.id), //
+              id: Number(item.product.id),
               price: Number(item.product.price),
             },
             quantity: Number(item.quantity),
@@ -260,7 +308,7 @@ export default function OrderForm({
           total_price: Number(totalPrice),
           address: addressData,
           comment: formData.comment || '',
-          delivery_time: formData.deliveryTime || 'now',
+          deliver_on_time: formData.deliveryTime || 'asap',
           customerInfo: {
             name: customerInfo.name || '',
             phone: customerInfo.phone || '',
@@ -603,24 +651,55 @@ export default function OrderForm({
                 Время доставки
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <Select
-                value={formData.deliveryTime}
-                onValueChange={(value) =>
-                  setFormData((prev) => ({ ...prev, deliveryTime: value }))
-                }
+            <CardContent className='space-y-4'>
+              <RadioGroup
+                value={deliveryOption}
+                onValueChange={handleDeliveryOptionChange}
+                className='space-y-3'
               >
-                <SelectTrigger>
-                  <SelectValue placeholder='Выберите время доставки' />
-                </SelectTrigger>
-                <SelectContent>
-                  {deliveryTimeSlots.map((slot) => (
-                    <SelectItem key={slot.value} value={slot.value}>
-                      {slot.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <div className='flex items-center space-x-2'>
+                  <RadioGroupItem value='asap' id='asap' />
+                  <Label htmlFor='asap' className='flex-1 cursor-pointer'>
+                    Как можно скорее
+                  </Label>
+                </div>
+                <div className='flex items-center space-x-2'>
+                  <RadioGroupItem value='scheduled' id='scheduled' />
+                  <Label htmlFor='scheduled' className='flex-1 cursor-pointer'>
+                    Указать желаемое время
+                  </Label>
+                </div>
+              </RadioGroup>
+
+              {deliveryOption === 'scheduled' && (
+                <div className='p-4 space-y-3 rounded-lg bg-muted/50'>
+                  <div className='space-y-2'>
+                    <Label htmlFor='delivery-date'>Дата доставки</Label>
+                    <Input
+                      id='delivery-date'
+                      type='date'
+                      value={scheduledDate}
+                      onChange={(e) =>
+                        handleScheduledDateChange(e.target.value)
+                      }
+                      min={new Date().toISOString().split('T')[0]}
+                      required
+                    />
+                  </div>
+                  <div className='space-y-2'>
+                    <Label htmlFor='delivery-time'>Время доставки</Label>
+                    <Input
+                      id='delivery-time'
+                      type='time'
+                      value={scheduledTime}
+                      onChange={(e) =>
+                        handleScheduledTimeChange(e.target.value)
+                      }
+                      required
+                    />
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -717,11 +796,11 @@ export default function OrderForm({
               <div>
                 <h4 className='mb-1 font-medium'>Время доставки:</h4>
                 <p className='text-sm text-muted-foreground'>
-                  {
-                    deliveryTimeSlots.find(
-                      (slot) => slot.value === formData.deliveryTime,
-                    )?.label
-                  }
+                  {deliveryOption === 'asap'
+                    ? 'Как можно скорее'
+                    : scheduledDate && scheduledTime
+                      ? `${new Date(scheduledDate).toLocaleDateString('ru-RU')} в ${scheduledTime}`
+                      : 'Как можно скорее'}
                 </p>
               </div>
             )}

@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       total_price,
       address,
       comment,
-      delivery_time,
+      deliver_on_time,
       customerInfo,
     } = await request.json();
 
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       total_price,
       address,
       comment,
-      delivery_time,
+      deliver_on_time,
       customerInfo,
     });
 
@@ -58,7 +58,11 @@ export async function POST(request: NextRequest) {
         email: customerInfo?.email || '',
         comment,
         deliver_on_time:
-          delivery_time === 'asap' ? null : new Date().toISOString(),
+          deliver_on_time === 'asap'
+            ? null
+            : deliver_on_time
+              ? new Date(deliver_on_time).toISOString()
+              : null,
         total_amount: Number(total_price),
         created_at: new Date().toISOString(),
       })
@@ -67,25 +71,6 @@ export async function POST(request: NextRequest) {
 
     if (orderError) {
       console.error('Ошибка при создании заказа:', orderError);
-      console.error('Данные заказа:', {
-        shop_id,
-        user_id: telegram_id,
-        status: 'pending',
-        country: address.country || '',
-        city: address.city || '',
-        street: address.street || '',
-        house_number: address.house || '',
-        is_private_house: address.isPrivateHouse || false,
-        apartment: address.apartment ? parseInt(address.apartment) : null,
-        entrance: address.entrance ? parseInt(address.entrance) : null,
-        floor: address.floor ? parseInt(address.floor) : null,
-        intercom_code: address.intercom || '',
-        phone: customerInfo?.phone || '',
-        email: customerInfo?.email || '',
-        comment,
-        deliver_on_time: delivery_time === 'asap' ? null : delivery_time,
-        total_amount: total_price,
-      });
       return NextResponse.json(
         {
           error: 'Failed to create order',

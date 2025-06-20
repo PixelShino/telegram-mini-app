@@ -301,6 +301,12 @@ async function handleUserOrders(
     message += `Сумма: ${order.total_amount.toFixed(2)} ₽\n`;
     message += `Статус: ${getStatusEmoji(order.status)} ${getStatusText(order.status)}\n`;
     message += `Дата: ${new Date(order.created_at).toLocaleString()}\n\n`;
+    // Добавляем время доставки
+    if (order.deliver_on_time) {
+      message += `Доставка ко времени: ${new Date(order.deliver_on_time).toLocaleString('ru-RU')}\n`;
+    } else {
+      message += `Доставка: Как можно скорее\n`;
+    }
 
     // Получаем товары заказа
     const { data: orderItems } = await supabase
@@ -399,6 +405,13 @@ async function handleViewOrder(
   message += `Статус: ${getStatusEmoji(order.status)} ${getStatusText(order.status)}\n`;
   message += `Дата: ${new Date(order.created_at).toLocaleString()}\n\n`;
 
+  // Добавляем время доставки
+  if (order.deliver_on_time) {
+    message += `Доставка ко времени: ${new Date(order.deliver_on_time).toLocaleString('ru-RU')}\n`;
+  } else {
+    message += `Доставка: Как можно скорее\n`;
+  }
+
   if (order.comment) message += `Комментарий: ${order.comment}\n\n`;
 
   // Добавляем информацию о товарах
@@ -468,6 +481,13 @@ export async function sendOrderStatusNotification(
   message += `Магазин: ${shop_name}\n`;
   message += `Сумма: ${order.total_amount.toFixed(2)} ₽\n`;
   message += `Дата: ${new Date(order.created_at).toLocaleString()}\n\n`;
+
+  // Добавляем время доставки
+  if (order.deliver_on_time) {
+    message += `Доставка ко времени: ${new Date(order.deliver_on_time).toLocaleString('ru-RU')}\n`;
+  } else {
+    message += `Доставка: Как можно скорее\n`;
+  }
 
   // Добавляем информацию о товарах
   if (orderItems && orderItems.length > 0) {
@@ -659,6 +679,13 @@ async function handleOrders(
     message += `Сумма: ${order.total_amount.toFixed(2)} ₽\n`;
     message += `Статус: ${getStatusEmoji(order.status)} ${getStatusText(order.status)}\n`;
     message += `Дата: ${new Date(order.created_at).toLocaleString()}\n`;
+
+    // Добавляем время доставки
+    if (order.deliver_on_time) {
+      message += `Доставка ко времени: ${new Date(order.deliver_on_time).toLocaleString('ru-RU')}\n`;
+    } else {
+      message += `Доставка: Как можно скорее\n`;
+    }
 
     // Добавляем информацию о пользователе
     if (order.user_id) {
