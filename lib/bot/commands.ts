@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server';
 import { supabase } from '../supabase/client';
 
 const ORDERS_PER_PAGE = 5;
+declare global {
+  var userStates: Map<number, string> | undefined;
+}
 // Проверка роли пользователя
 async function isAdmin(telegramId: number): Promise<boolean> {
   const supabase = createClient();
@@ -94,6 +97,20 @@ export async function processCommand(
         : await sendMessage(chatId, 'У вас нет доступа к этой команде.');
     case '/help':
       return await handleHelp(chatId, admin);
+
+    case '/support':
+      return admin
+        ? await sendMessage(
+            chatId,
+            'Это опция пользователей для связи с менеджером/администратором.',
+          )
+        : await handleSupport(chatId);
+
+    case '/messages':
+      return admin
+        ? await handleMessages(chatId, args)
+        : await sendMessage(chatId, 'У вас нет доступа к этой команде.');
+
     default:
       return await sendMessage(
         chatId,
@@ -150,6 +167,7 @@ async function handleStart(chatId: number, user: any, isAdmin: boolean) {
           { text: '/addproduct - Добавить товар' },
         ],
         [{ text: '/settings - Настройки' }, { text: '/help - Справка' }],
+        [{ text: '/messages - Сообщения' }],
       ],
       resize_keyboard: true,
       one_time_keyboard: false,
@@ -170,7 +188,7 @@ async function handleStart(chatId: number, user: any, isAdmin: boolean) {
     // Создаем клавиатуру с кнопками для обычного пользователя
     const keyboard = {
       keyboard: [
-        [{ text: '/myorders - Мои заказы' }, { text: '/help - Справка' }],
+        [{ text: 'Мои заказы' }, { text: 'Справка' }, { text: 'Поддержка' }],
         [{ text: 'Перейти в магазин' }],
       ],
       resize_keyboard: true,
@@ -207,6 +225,11 @@ async function handleStart(chatId: number, user: any, isAdmin: boolean) {
 }
 
 export async function processMessage(text: string, chatId: number, user: any) {
+  const userState = await getUserState(chatId);
+  if (userState === 'waiting_support_message') {
+    await processSupportMessage(text, chatId, user);
+    return;
+  }
   // Обработка кнопки "Перейти в магазин"
   if (text === 'Перейти в магазин') {
     const shop = await getUserShop(user.id);
@@ -1711,6 +1734,223 @@ export async function processDialogState(
     }
   }
 }
+// Функция для обработки поддержки
+async function handleSupport(chatId: number) {
+  await sendMessage(
+    chatId,
+    '💬 <b>Поддержка</b>\n\n' +
+      'Напишите ваш вопрос или сообщение, и администратор магазина получит уведомление.\n\n' +
+      'Просто отправьте следующее сообщение с вашим вопросом.',
+  );
+
+  // Устанавливаем флаг ожидания сообщения поддержки
+  await setUserState(chatId, 'waiting_support_message');
+}
+// Функция для просмотра сообщений (для админов)
+async function handleMessages(chatId: number, args: string[], page = 0) {
+  const supabase = createClient();
+
+  // Проверяем, что пользователь - администратор
+  const { data: adminShops } = await supabase
+    .from('shop_admins')
+    .select('shop_id')
+    .eq('telegram_id', chatId);
+
+  if (!adminShops || adminShops.length === 0) {
+    return await sendMessage(chatId, 'У вас нет прав для просмотра сообщений.');
+  }
+
+  const shopIds = adminShops.map((shop) => shop.shop_id);
+  const MESSAGES_PER_PAGE = 5;
+
+  // Получаем сообщения поддержки
+  const { data: messages, error } = await supabase
+    .from('support_messages')
+    .select(
+      `
+      *,
+      users:telegram_id (
+        name,
+        username,
+        phone,
+        email
+      ),
+      shops:shop_id (name)
+    `,
+    )
+    .in('shop_id', shopIds)
+    .order('created_at', { ascending: false })
+    .range(page * MESSAGES_PER_PAGE, (page + 1) * MESSAGES_PER_PAGE - 1);
+
+  if (error || !messages || messages.length === 0) {
+    return await sendMessage(chatId, 'Нет сообщений от пользователей.');
+  }
+
+  let messageText = `💬 <b>Сообщения поддержки (страница ${page + 1})</b>\n\n`;
+
+  for (const msg of messages) {
+    const user = msg.users;
+    const readStatus = msg.is_read ? '✅' : '🔴';
+
+    messageText += `${readStatus} <b>От:</b> ${user?.name || 'Неизвестный'}\n`;
+    if (user?.username) messageText += `@${user.username}\n`;
+    if (user?.phone) messageText += `📞 ${user.phone}\n`;
+    if (user?.email) messageText += `📧 ${user.email}\n`;
+    messageText += `<b>Магазин:</b> ${msg.shops.name}\n`;
+    messageText += `<b>Сообщение:</b> ${msg.message}\n`;
+    messageText += `<b>Дата:</b> ${new Date(msg.created_at).toLocaleString('ru-RU')}\n\n`;
+    messageText += '---\n\n';
+  }
+
+  // Создаем клавиатуру для навигации
+  const keyboard: any = {
+    inline_keyboard: [],
+  };
+
+  // Добавляем кнопки для отметки как прочитанное
+  for (const msg of messages) {
+    if (!msg.is_read) {
+      keyboard.inline_keyboard.push([
+        {
+          text: `Отметить как прочитанное: ${msg.users?.name || 'ID:' + msg.telegram_id}`,
+          callback_data: `mark_read_${msg.id}`,
+        },
+      ]);
+    }
+  }
+
+  // Кнопки навигации
+  const navButtons = [];
+  if (page > 0) {
+    navButtons.push({
+      text: '◀️ Назад',
+      callback_data: `messages_page_${page - 1}`,
+    });
+  }
+  navButtons.push({
+    text: 'Вперёд ▶️',
+    callback_data: `messages_page_${page + 1}`,
+  });
+
+  if (navButtons.length > 0) {
+    keyboard.inline_keyboard.push(navButtons);
+  }
+
+  await sendMessageWithKeyboard(chatId, messageText, keyboard);
+}
+// Функция для обработки сообщений поддержки
+
+// Функция для уведомления админов о новом сообщении поддержки
+async function notifyAdminsAboutSupportMessage(
+  shopId: string,
+  user: any,
+  message: string,
+) {
+  const supabase = createClient();
+
+  const { data: admins } = await supabase
+    .from('shop_admins')
+    .select('telegram_id')
+    .eq('shop_id', shopId);
+
+  if (!admins) return;
+
+  const { data: shop } = await supabase
+    .from('shops')
+    .select('name')
+    .eq('id', shopId)
+    .single();
+
+  for (const admin of admins) {
+    const notificationText =
+      `🔔 <b>Новое сообщение поддержки</b>\n\n` +
+      `<b>От:</b> ${user.name || 'Неизвестный'}\n` +
+      `<b>Username:</b> @${user.username || 'не указан'}\n` +
+      `<b>Магазин:</b> ${shop?.name || 'Неизвестный'}\n\n` +
+      `<b>Сообщение:</b>\n${message}\n\n` +
+      `Используйте /messages для просмотра всех сообщений.`;
+
+    await sendMessage(admin.telegram_id, notificationText);
+  }
+}
+export async function processSupportMessage(
+  text: string,
+  chatId: number,
+  user: any,
+) {
+  const supabase = createClient();
+
+  // Получаем магазин пользователя
+  const shop = await getUserShop(user.id);
+  if (!shop) {
+    return await sendMessage(
+      chatId,
+      'Не удалось определить магазин для отправки сообщения.',
+    );
+  }
+
+  // Сохраняем сообщение в базу данных
+  const { error } = await supabase.from('support_messages').insert({
+    telegram_id: chatId,
+    shop_id: shop.id,
+    message: text,
+  });
+
+  if (error) {
+    console.error('Ошибка сохранения сообщения поддержки:', error);
+    return await sendMessage(
+      chatId,
+      'Произошла ошибка при отправке сообщения.',
+    );
+  }
+
+  // Уведомляем администраторов
+  await notifyAdminsAboutSupportMessage(shop.id, user, text);
+
+  await sendMessage(
+    chatId,
+    '✅ Ваше сообщение отправлено администратору магазина. Спасибо за обращение!',
+  );
+
+  // Сбрасываем состояние пользователя
+  await clearUserState(chatId);
+}
+// Функция для отметки сообщения как прочитанного
+async function markMessageAsRead(chatId: number, messageId: string) {
+  const supabase = createClient();
+
+  const { error } = await supabase
+    .from('support_messages')
+    .update({ is_read: true })
+    .eq('id', messageId);
+
+  if (error) {
+    await sendMessage(chatId, 'Ошибка при обновлении статуса сообщения.');
+  } else {
+    await sendMessage(chatId, '✅ Сообщение отмечено как прочитанное.');
+    // Обновляем список сообщений
+    await handleMessages(chatId, []);
+  }
+}
+
+// Вспомогательные функции для состояния пользователя
+async function setUserState(chatId: number, state: string) {
+  // Можно использовать Redis или простое хранение в памяти
+  // Для простоты используем Map
+  if (!globalThis.userStates) globalThis.userStates = new Map();
+  globalThis.userStates.set(chatId, state);
+}
+
+async function getUserState(chatId: number): Promise<string | null> {
+  if (!globalThis.userStates) return null;
+  return globalThis.userStates.get(chatId) || null;
+}
+
+async function clearUserState(chatId: number) {
+  if (!globalThis.userStates) return;
+  globalThis.userStates.delete(chatId);
+}
+
 // Функция для редактирования названия товара
 async function handleEditProductName(chatId: number, productId: string) {
   console.log('Запуск редактирования названия товара:', { chatId, productId });
@@ -2440,6 +2680,12 @@ export async function processCallback(
       await sendMessage(chatId, `✅ Категория товара успешно обновлена!`);
       await handleEditProduct(chatId, productId, messageId);
     }
+  } else if (callbackData.startsWith('mark_read_')) {
+    const messageId = callbackData.substring('mark_read_'.length);
+    await markMessageAsRead(chatId, messageId);
+  } else if (callbackData.startsWith('messages_page_')) {
+    const page = parseInt(callbackData.substring('messages_page_'.length), 10);
+    await handleMessages(chatId, [], page);
   }
 }
 
