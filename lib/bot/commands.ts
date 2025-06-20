@@ -2204,6 +2204,7 @@ async function sendMessage(chatId: number, text: string) {
   }
 }
 // Функция для отправки уведомления администраторам о новом заказе
+// Функция для отправки уведомления администраторам о новом заказе
 export async function sendOrderNotificationToAdmins(
   order_id: string,
   shop_id: string,
@@ -2233,6 +2234,24 @@ export async function sendOrderNotificationToAdmins(
 
   const shopName = shop ? shop.name : 'Неизвестный магазин';
 
+  // Получаем информацию о заказе
+  const { data: order } = await supabase
+    .from('orders')
+    .select('deliver_on_time')
+    .eq('id', order_id)
+    .single();
+
+  // Получаем товары заказа
+  const { data: orderItems } = await supabase
+    .from('orders_list')
+    .select(
+      `
+      *,
+      products:product_id (name)
+    `,
+    )
+    .eq('order_id', order_id);
+
   // Создаем клавиатуру с кнопками для обработки заказа
   const keyboard = {
     inline_keyboard: [
@@ -2249,12 +2268,29 @@ export async function sendOrderNotificationToAdmins(
 
   // Отправляем уведомление каждому администратору
   for (const admin of admins) {
-    const message =
+    let message =
       `🔔 <b>Новый заказ #${order_id}</b>\n\n` +
       `Магазин: ${shopName}\n` +
       `Сумма: ${total_amount.toFixed(2)} ₽\n` +
-      `Клиент: ${customer_info}\n\n` +
-      `Статус: ${getStatusEmoji('pending')} ${getStatusText('pending')}\n\n` +
+      `Клиент: ${customer_info}\n\n`;
+
+    // Добавляем время доставки
+    if (order?.deliver_on_time) {
+      message += `Доставка ко времени: ${new Date(order.deliver_on_time).toLocaleString('ru-RU')}\n`;
+    } else {
+      message += `Доставка: Как можно скорее\n`;
+    }
+
+    // Добавляем товары
+    if (orderItems && orderItems.length > 0) {
+      message += `\n<b>Товары:</b>\n`;
+      orderItems.forEach((item) => {
+        message += `- ${item.products.name} x ${item.amount} шт. (${(item.price * item.amount).toFixed(2)} ₽)\n`;
+      });
+    }
+
+    message +=
+      `\nСтатус: ${getStatusEmoji('pending')} ${getStatusText('pending')}\n\n` +
       `Выберите действие:`;
 
     await sendMessageWithKeyboard(admin.telegram_id, message, keyboard);
